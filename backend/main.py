@@ -1,42 +1,12 @@
-from fastapi import FastAPI
-from ai import analyze_stock_ai
-from data import get_stock_data
-from model import prepare_data, train_models
+print("🔥 CLEAN MAIN RUNNING")
+
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from data import get_stock_data, get_stock_info
+from ai import analyze_stock_ai
 
-
-try:
-    ai_analysis = analyze_stock_ai(...)
-except Exception as e:
-    ai_analysis = f"AI error: {str(e)}"
-
-history = []
-watchlist = []
-
-def backtest(df):
-    correct = 0
-    total = 0
-
-    X, y = prepare_data(df)
-
-    for i in range(len(X) - 1):
-        sample = X.iloc[[i]]
-
-        pred1 = model1.predict(sample)[0]
-        pred2 = model2.predict(sample)[0]
-
-        final = 1 if [pred1, pred2].count(1) > 1 else 0
-
-        actual = y.iloc[i]
-
-        if final == actual:
-            correct += 1
-
-        total += 1
-
-    accuracy = correct / total if total > 0 else 0
-
-    return round(accuracy * 100, 2)
+import pandas as pd
+from sklearn.tree import DecisionTreeClassifier
 
 app = FastAPI()
 
@@ -48,344 +18,245 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-model1 = None
-model2 = None
+model = None
+
+
+def prepare_features(df):
+    df = df.copy()
+
+    df["MA20"] = df["Close"].rolling(20).mean()
+    df["MA50"] = df["Close"].rolling(50).mean()
+
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = gain / loss
+    df["RSI"] = 100 - (100 / (1 + rs))
+
+    df["volatility"] = df["Close"].pct_change().rolling(10).std()
+    df["momentum"] = df["Close"].pct_change(10)
+
+    df.dropna(inplace=True)
+    return df
 
 
 @app.on_event("startup")
-def load_models():
-    global model1, model2
+def train_model():
+    global model
 
     df = get_stock_data("AAPL")
-    X, y = prepare_data(df)
+    df = prepare_features(df)
 
-    model1, model2 = train_models(X, y)
+    X = df[["RSI", "MA20", "MA50", "momentum", "volatility"]]
+    df["target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+    y = df["target"]
 
-@app.get("/best-stock")
-def best_stock():
-    symbols = [
-    "AAPL", "MSFT", "GOOGL", "TSLA",
-    "AMZN", "META",
-    "RELIANCE.NS", "TCS.NS", "INFY.NS"
-]
+    X = X[:-1]
+    y = y[:-1]
 
-    best = None
-    best_score = -999
+    model = DecisionTreeClassifier(max_depth=5)
+    model.fit(X, y)
 
-    for symbol in symbols:
-        try:
-            df = get_stock_data(symbol)
-            X, _ = prepare_data(df)
-
-            latest = X.iloc[[-1]]
-
-            pred1 = model1.predict(latest)[0]
-            pred2 = model2.predict(latest)[0]
-
-            final = 1 if [pred1, pred2].count(1) > 1 else 0
-
-            rsi = df["RSI"].iloc[-1]
-
-            score = 0
-
-            # ML
-            score += 1 if final == 1 else -1
-
-            # RSI
-            if rsi < 30:
-                score += 1
-            elif rsi > 70:
-                score -= 1
-
-            if score > best_score:
-                best_score = score
-                best = symbol
-
-        except:
-            continue
-
-    return {
-        "best_stock": best,
-        "score": best_score
-    }
-
-@app.get("/top-stocks")
-def top_stocks():
-    symbols = [
-    "AAPL", "MSFT", "GOOGL", "TSLA",
-    "AMZN", "META",
-    "RELIANCE.NS", "TCS.NS", "INFY.NS"
-]
-
-    results = []
-
-    for symbol in symbols:
-        try:
-            df = get_stock_data(symbol)
-            X, _ = prepare_data(df)
-
-            latest = X.iloc[[-1]]
-
-            pred1 = model1.predict(latest)[0]
-            pred2 = model2.predict(latest)[0]
-
-            final = 1 if [pred1, pred2].count(1) > 1 else 0
-
-            results.append({
-                "symbol": symbol,
-                "prediction": "BUY" if final == 1 else "SELL"
-            })
-
-        except:
-            continue
-
-    return results
-@app.get("/history")
-def get_history():
-    return history
-
-@app.get("/add-watchlist")
-def add_watchlist(symbol: str):
-    if symbol not in watchlist:
-        watchlist.append(symbol)
-    return {"watchlist": watchlist}
+    print("✅ MODEL TRAINED")
 
 
-@app.get("/watchlist")
-def get_watchlist():
-    return watchlist
-
-@app.get("/popular-stocks")
-def popular_stocks():
-    return [
-        "AAPL", "MSFT", "GOOGL", "TSLA",
-        "AMZN", "META",
-        "RELIANCE.NS", "TCS.NS", "INFY.NS",
-        "BTC-USD"
+@app.get("/search")
+def search_stock(query: str):
+    data = [
+        {"symbol": "AAPL", "name": "Apple"},
+        {"symbol": "TSLA", "name": "Tesla"},
+        {"symbol": "TXN", "name": "Texas Instruments"},
     ]
 
-@app.get("/")
-def home():
-    return {"message": "ML API running"}
+    return [s for s in data if query.lower() in s["symbol"].lower() or query.lower() in s["name"].lower()]
 
-from fastapi import Query
 
-from fastapi import Query
+print("🔥 CLEAN MAIN RUNNING")
+
+from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from data import get_stock_data, get_stock_info
+from ai import analyze_stock_ai
+
+import pandas as pd
+from sklearn.tree import DecisionTreeClassifier
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+model = None
+
+
+def prepare_features(df):
+    df = df.copy()
+
+    df["MA20"] = df["Close"].rolling(20).mean()
+    df["MA50"] = df["Close"].rolling(50).mean()
+
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = gain / loss
+    df["RSI"] = 100 - (100 / (1 + rs))
+
+    df["volatility"] = df["Close"].pct_change().rolling(10).std()
+    df["momentum"] = df["Close"].pct_change(10)
+
+    df.dropna(inplace=True)
+    return df
+
+
+@app.on_event("startup")
+def train_model():
+    global model
+
+    df = get_stock_data("AAPL")
+    df = prepare_features(df)
+
+    X = df[["RSI", "MA20", "MA50", "momentum", "volatility"]]
+    df["target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+    y = df["target"]
+
+    X = X[:-1]
+    y = y[:-1]
+
+    model = DecisionTreeClassifier(max_depth=5)
+    model.fit(X, y)
+
+    print("✅ MODEL TRAINED")
+
+
+@app.get("/search")
+def search_stock(query: str):
+    data = [
+        {"symbol": "AAPL", "name": "Apple"},
+        {"symbol": "TSLA", "name": "Tesla"},
+        {"symbol": "TXN", "name": "Texas Instruments"},
+    ]
+
+    return [s for s in data if query.lower() in s["symbol"].lower() or query.lower() in s["name"].lower()]
+
 
 @app.get("/predict")
 def predict(symbol: str = Query("AAPL")):
     df = get_stock_data(symbol)
 
-    
-    # STEP 1 — validation
-    if df.empty or "Close" not in df.columns:
-        return {"error": "Invalid symbol or no data found"}
+    if df.empty:
+        return {"error": "Invalid symbol"}
 
-    if len(df) < 20:
+    df = prepare_features(df)
+
+    if df.empty:
         return {"error": "Not enough data"}
 
-    # STEP 2 — prepare data
-    X, _ = prepare_data(df)
+    latest = df.iloc[-1]
 
-    # STEP 3 — trend
-    ma5 = df["Close"].rolling(5).mean()
-    ma20 = df["Close"].rolling(20).mean()
+    # ===== PRICE =====
+    price = float(latest["Close"])
 
-    ma5_last = float(ma5.iloc[-1].item())
-    ma20_last = float(ma20.iloc[-1].item())
+    # ===== ML =====
+    features = latest[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
+    prob = model.predict_proba(features)[0][1]
+    confidence = round(prob * 100, 2)
 
-    trend = "Uptrend" if ma5_last > ma20_last else "Downtrend"
+    # ===== SIGNAL ENGINE =====
+    ma20 = float(latest["MA20"])
+    ma50 = float(latest["MA50"])
+    rsi = float(latest["RSI"])
+    momentum = float(latest["momentum"])
 
-    # STEP 4 — ML predictions
-    latest = X.iloc[[-1]]
-
-    pred1 = model1.predict(latest)[0]
-    pred2 = model2.predict(latest)[0]
-
-    votes = [pred1, pred2]
-    buy_votes = votes.count(1)
-    sell_votes = votes.count(0)
-
-    final = 1 if buy_votes > sell_votes else 0
-    confidence = max(buy_votes, sell_votes) / len(votes)
-
-    # STEP 5 — RSI
-    rsi_value = df["RSI"].iloc[-1]
-
-    signal = "HOLD"
-    if rsi_value < 30:
-        signal = "BUY (Oversold)"
-    elif rsi_value > 70:
-        signal = "SELL (Overbought)"
-
-    # STEP 6 — SCORE SYSTEM
+    signals = []
     score = 0
 
-    if trend == "Uptrend":
+    if ma20 > ma50:
+        signals.append("MA20 > MA50 (Bullish)")
         score += 1
     else:
+        signals.append("MA20 < MA50 (Bearish)")
         score -= 1
 
-    if rsi_value < 30:
+    if rsi < 30:
+        signals.append("RSI Oversold")
+        score += 2
+    elif rsi > 70:
+        signals.append("RSI Overbought")
+        score -= 2
+    else:
+        signals.append("RSI Neutral")
+
+    if momentum > 0:
+        signals.append("Momentum Positive")
         score += 1
-    elif rsi_value > 70:
+    else:
+        signals.append("Momentum Negative")
         score -= 1
 
-    if final == 1:
-        score += 1
+    # ===== FINAL DECISION =====
+    if score >= 2:
+        prediction = "BUY"
+    elif score <= -2:
+        prediction = "SELL"
     else:
-        score -= 1
+        prediction = "HOLD"
 
-    bullish = 0
-    bearish = 0
+    # ===== SUPPORT / RESISTANCE =====
+    support = float(df["Low"].rolling(20).min().iloc[-1])
+    resistance = float(df["High"].rolling(20).max().iloc[-1])
 
-    # Trend
-    if trend == "Uptrend":
-        bullish += 1
+    # ===== TRADE PLAN =====
+    if prediction == "BUY":
+        entry = round(price, 2)
+        stop_loss = round(support, 2)
+        target = round(resistance, 2)
+    elif prediction == "SELL":
+        entry = round(price, 2)
+        stop_loss = round(resistance, 2)
+        target = round(support, 2)
     else:
-        bearish += 1
+        entry = "-"
+        stop_loss = "-"
+        target = "-"
 
-    # RSI
-    if rsi_value < 30:
-        bullish += 1
-    elif rsi_value > 70:
-        bearish += 1
-
-    # ML
-    if final == 1:
-        bullish += 1
+    if prediction != "HOLD":
+        risk = float(abs(entry - stop_loss))
+        reward = float(abs(target - entry))
+        rr = round(reward / risk, 2) if risk != 0 else 0
     else:
-        bearish += 1
+        rr = "-"
 
-    # RESULT
-    if bullish > bearish:
-        confluence = "Bullish"
-    elif bearish > bullish:
-        confluence = "Bearish"
-    else:
-        confluence = "Neutral"
-
-    entry = "Wait"
-    stop_loss = "N/A"
-    target = "N/A"
-
-    insight = ""
-
-    if confluence == "Bullish" and rsi_value < 40:
-        entry = "Good Buy Zone"
-        stop_loss = "2% below"
-        target = "5% above"
-
-    elif confluence == "Bearish" and rsi_value > 60:
-        entry = "Avoid / Sell Zone"
-        stop_loss = "N/A"
-        target = "N/A"
-
-    
-
-    if confluence == "Bullish":
-        insight = "Stock shows bullish signals with decent momentum. Possible buying opportunity."
-
-    elif confluence == "Bearish":
-      insight = "Stock is in a downtrend with weak signals. Avoid entering now."
-
-    else:
-        insight = "Mixed signals. Wait for clearer confirmation."
-
-     # STEP 9 — EXPLANATION
-    positive = []
-    negative = []
-
-    if trend == "Uptrend":
-        positive.append("Uptrend detected")
-    else:
-        negative.append("Downtrend detected")
-
-    if rsi_value < 30:
-        positive.append("Stock is oversold")
-    elif rsi_value > 70:
-        negative.append("Stock is overbought")
-    else:
-        negative.append("RSI is neutral")
-
-    if final == 1:
-        positive.append("Models suggest BUY")
-    else:
-        negative.append("Models suggest SELL")
-
-    backtest_accuracy = backtest(df)
-
-    # STEP 7 — DECISION STRENGTH
-    if confidence > 0.8:
-        strength = "Strong"
-    elif confidence > 0.6:
-        strength = "Moderate"
-    else:
-        strength = "Weak"
-
-    # STEP 8 — MARKET STATE
-    volatility = float(df["Close"].pct_change().std())
-
-    if volatility > 0.03:
-        market_state = "Volatile"
-    elif abs(ma5_last - ma20_last) < 1:
-        market_state = "Sideways"
-    else:
-        market_state = "Trending"
-
-   
-    
-    history.append({
-        "symbol": symbol,
-        "prediction": "BUY" if final == 1 else "SELL",
-        "confidence": round(confidence * 100, 2)    
-    })
-
-# keep only last 10
-    if len(history) > 10:
-        history.pop(0)
-    
+    # ===== AI =====
+    trend = "Uptrend" if ma20 > ma50 else "Downtrend"
 
     ai_analysis = analyze_stock_ai(
-    symbol,
-    trend,
-    rsi_value,
-    "BUY" if final == 1 else "SELL",
-    round(confidence * 100, 2)
-)
-    # FINAL RESPONSE
+        symbol,
+        trend,
+        round(rsi, 2),
+        prediction,
+        confidence
+    )
+
+    # ===== COMPANY INFO =====
+    info = get_stock_info(symbol)
+
     return {
-        "prediction": "BUY" if final == 1 else "SELL",
-        "confidence": round(confidence * 100, 2),
-        "decision_strength": strength,
-
-        "trend": trend,
-        "market_state": market_state,
-
-        "rsi": round(rsi_value, 2),
-        "signal": signal,
-
-        "score": score,
-        "backtest_accuracy": backtest_accuracy,
-        "models": {
-            "logistic": "BUY" if pred1 == 1 else "SELL",
-            "random_forest": "BUY" if pred2 == 1 else "SELL"
-        },
-
-        "reasoning": {
-            "positive": positive,
-            "negative": negative
-        },
-
-        "confluence": confluence,
-
+        "symbol": symbol,
+        "company": info.get("name", symbol),
+        "price": round(price, 2),
+        "prediction": prediction,
+        "confidence": confidence,
+        "signals": signals,
         "trade_plan": {
             "entry": entry,
             "stop_loss": stop_loss,
-            "target": target
+            "target": target,
+            "risk_reward": rr
         },
-
-        "insight": insight,
         "ai_analysis": ai_analysis
-
     }
