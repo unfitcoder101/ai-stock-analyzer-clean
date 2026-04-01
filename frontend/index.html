@@ -1,14 +1,677 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Synthetic Oracle | Advanced AI Equity Intelligence</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "inverse-primary": "#6e3bd7",
+                        "surface-container-low": "#131313",
+                        "tertiary-container": "#de4bf4",
+                        "error-dim": "#d73357",
+                        "error": "#ff6e84",
+                        "on-tertiary": "#3d0047",
+                        "on-tertiary-fixed": "#300038",
+                        "inverse-surface": "#fcf8f8",
+                        "secondary": "#53ddfc",
+                        "primary-fixed-dim": "#a27cff",
+                        "on-surface-variant": "#adaaaa",
+                        "surface-variant": "#262626",
+                        "on-primary-container": "#2b006e",
+                        "surface-container-highest": "#262626",
+                        "on-error": "#490013",
+                        "surface-bright": "#2c2c2c",
+                        "surface-dim": "#0e0e0e",
+                        "surface-container": "#1a1919",
+                        "primary-dim": "#8455ef",
+                        "tertiary": "#ec63ff",
+                        "on-primary": "#39008c",
+                        "outline-variant": "#494847",
+                        "secondary-fixed-dim": "#48d4f3",
+                        "on-tertiary-container": "#19001e",
+                        "primary-container": "#ae8dff",
+                        "on-secondary-container": "#ecfaff",
+                        "surface-container-high": "#201f1f",
+                        "inverse-on-surface": "#565554",
+                        "error-container": "#a70138",
+                        "on-surface": "#ffffff",
+                        "secondary-container": "#00687a",
+                        "on-tertiary-fixed-variant": "#660075",
+                        "primary": "#ba9eff",
+                        "primary-fixed": "#ae8dff",
+                        "tertiary-fixed-dim": "#ef6eff",
+                        "outline": "#777575",
+                        "secondary-dim": "#40ceed",
+                        "surface-container-lowest": "#000000",
+                        "tertiary-fixed": "#f487ff",
+                        "on-secondary-fixed": "#003a45",
+                        "on-primary-fixed-variant": "#370086",
+                        "on-secondary": "#004b58",
+                        "secondary-fixed": "#65e1ff",
+                        "on-error-container": "#ffb2b9",
+                        "tertiary-dim": "#ec63ff",
+                        "surface-tint": "#ba9eff",
+                        "surface": "#0e0e0e",
+                        "on-primary-fixed": "#000000",
+                        "on-background": "#ffffff",
+                        "background": "#0e0e0e",
+                        "on-secondary-fixed-variant": "#005969"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+                },
+            },
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+
+        .glass-panel {
+            background: rgba(38, 38, 38, 0.15);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(186, 158, 255, 0.1);
+        }
+
+        .shimmer {
+            background: linear-gradient(90deg, transparent, rgba(186, 158, 255, 0.05), transparent);
+            background-size: 200% 100%;
+        }
+
+        body {
+            background-color: #0e0e0e;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .ticker-glow {
+            text-shadow: 0 0 15px rgba(186, 158, 255, 0.4);
+        }
+    </style>
+</head>
+
+<body class="selection:bg-primary/30 selection:text-primary">
+    <!-- TopNavBar Implementation from Shared Components JSON -->
+    <nav
+        class="fixed top-0 w-full z-50 bg-[#0e0e0e]/80 backdrop-blur-xl border-b border-[#ba9eff]/10 shadow-[0_4px_20px_rgba(186,158,255,0.05)] flex justify-between items-center px-8 h-20 w-full font-['Space_Grotesk'] tracking-tight">
+        <div class="flex items-center gap-8">
+            <span
+                class="text-2xl font-bold bg-gradient-to-r from-[#ba9eff] to-[#53ddfc] bg-clip-text text-transparent">Synthetic
+                Oracle</span>
+            <!-- Dashboard is active as this is the primary terminal view -->
+
+        </div>
+        <!-- Custom Search Integration -->
+        <div class="flex-1 max-w-2xl px-12 hidden lg:block">
+            <div class="relative group">
+                <div class="absolute inset-y-0 left-4 flex items-center pointer-events-none text-on-surface-variant">
+                    <span class="material-symbols-outlined text-lg">search</span>
+                </div>
+                <input id="searchInput" onkeyup="searchStock(this.value)"
+                    class="w-full bg-surface-container-highest/50 border-0 focus:ring-1 focus:ring-primary rounded-xl py-2.5 pl-12 pr-4 text-sm text-on-surface"
+                    placeholder="Search any stock (AAPL, TSLA)" />
+
+                <div id="dropdown" class="absolute bg-black w-full mt-1 rounded z-50"></div>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="hidden xl:flex items-center gap-2 mr-4">
+
+                <!-- WATCHLIST (NAVBAR) -->
+                <div id="watchlistNavbar" class="flex gap-2"></div>
+
+                <!-- ADD BUTTON -->
+                <button onclick="addToWatchlist()"
+                    class="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center hover:bg-primary/20 transition-all">
+                    <span class="material-symbols-outlined text-sm">add</span>
+                </button>
+
+            </div>
+        </div>
+    </nav>
+    <!-- SideNavBar Implementation from Shared Components JSON -->
+    <aside
+        class="fixed left-0 top-20 h-[calc(100vh-5rem)] w-64 bg-[#131313] hidden md:flex flex-col py-8 gap-2 font-['Inter'] text-sm font-medium">
+        <div class="px-6 mb-8">
+            <div class="flex items-center gap-3 p-3 bg-surface-container rounded-xl border border-outline-variant/10">
+                <div class="w-8 h-8 bg-secondary/10 rounded-lg flex items-center justify-center text-secondary">
+                    <span class="material-symbols-outlined text-lg">hub</span>
+                </div>
+                <div>
+                    <h4 class="text-white text-xs font-bold leading-none">System Status</h4>
+                    <p class="text-[10px] text-secondary mt-1 uppercase tracking-tighter">All Engines Nominal</p>
+                </div>
+            </div>
+        </div>
+        <nav class="flex-1 space-y-1">
+            <a class="flex items-center gap-4 bg-[#ba9eff]/10 text-[#ba9eff] rounded-r-full mr-4 px-6 py-4 transition-transform hover:translate-x-1"
+                href="#">
+                <span class="material-symbols-outlined">grid_view</span>
+                <span>Overview</span>
+            </a>
+
+            <a class="flex items-center gap-4 text-white/40 hover:text-[#53ddfc] px-6 py-4 transition-transform hover:translate-x-1"
+                href="#">
+                <span class="material-symbols-outlined">star</span>
+                <span>Watchlist</span>
+            </a>
+
+        </nav>
+
+        <div class="px-6 mt-6">
+            <h3 class="text-xs text-white/50 mb-3">Watchlist</h3>
+
+            <div id="watchlistSidebar" class="flex flex-col gap-2"></div>
+        </div>
+
+    </aside>
+    <!-- Main Content Canvas -->
+    <main class="md:pl-64 pt-24 min-h-screen px-8 pb-12">
+        <div class="max-w-7xl mx-auto space-y-8">
+            <!-- Hero Section: The Verdict -->
+            <section class="relative">
+                <div class="glass-panel rounded-3xl p-10 overflow-hidden relative group">
+                    <!-- Decorative Light Effects -->
+                    <div class="absolute -top-24 -right-24 w-64 h-64 bg-secondary/10 blur-[100px] rounded-full"></div>
+                    <div class="absolute -bottom-24 -left-24 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
+                    <div
+                        class="flex flex-col md:flex-row justify-between items-end md:items-center gap-8 relative z-10">
+                        <div class="space-y-4">
+                            <div class="flex items-center gap-3">
+
+                                <h1 id="stockName" class="font-headline text-4xl md:text-5xl font-bold tracking-tight">
+                                    Apple Inc. (AAPL)
+                                </h1>
+
+                                <button onclick="addToWatchlist()"
+                                    class="px-3 py-1 text-xs bg-primary/20 border border-primary/30 rounded-lg hover:bg-primary/40 transition">
+                                    + Watchlist
+                                </button>
+
+
+                                <button
+                                    class="w-10 h-10 rounded-full border border-outline-variant flex items-center justify-center text-on-surface-variant hover:text-white transition-colors">
+                                    <span class="material-symbols-outlined">star</span>
+                                </button>
+
+                            </div>
+                            <div class="flex items-baseline gap-4">
+                                <span class="font-headline text-6xl font-bold tracking-tighter text-white tabular-nums">
+                                    <span id="price">$0</span>
+                                </span>
+                            </div>
+
+
+                        </div>
+                        <div class="flex flex-col items-center md:items-end gap-2">
+                            <div class="text-[10px] font-bold text-on-surface-variant uppercase tracking-[0.3em] mb-2">
+                                Synthetic Verdict</div>
+                            <div class="relative">
+                                <div class="absolute inset-0 blur-2xl bg-secondary/20 rounded-full"></div>
+                                <span
+                                    class="relative font-headline text-8xl font-black italic tracking-tighter text-secondary ticker-glow"><span
+                                        id="verdict">BUY</span></span>
+                            </div>
+                            <div class="w-full md:w-64 mt-4">
+                                <div
+                                    class="flex justify-between text-[10px] font-bold mb-2 uppercase text-on-surface-variant tracking-wider">
+                                    <span>Oracle Confidence</span>
+                                    <span class="text-secondary"><span id="confidence">0%</span></span>
+                                </div>
+                                <div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
+                                    <div
+                                        class="h-full bg-gradient-to-r from-secondary to-primary w-[94%] rounded-full shadow-[0_0_10px_rgba(83,221,252,0.5)]">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Floating Action -->
+                <button onclick="loadBestStock()"
+                    class="absolute -bottom-6 right-10 bg-surface-container-high border border-primary/30 px-6 py-3 rounded-full flex items-center gap-3 shadow-2xl group hover:border-primary transition-all">
+                    <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                    <span class="text-xs font-bold tracking-widest uppercase">Best Stock Today</span>
+                    <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                </button>
+            </section>
+            <!-- Main Layout Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                <!-- Left: Chart Engine (60%) -->
+                <div class="lg:col-span-3 space-y-6">
+                    <div class="glass-panel rounded-2xl h-[600px] flex flex-col overflow-hidden relative">
+                        <div class="p-6 flex justify-between items-center border-b border-outline-variant/10">
+                            <div class="flex items-center gap-4">
+
+                                <div class="flex gap-1">
+                                    <span class="w-2 h-2 rounded-full bg-outline-variant"></span>
+                                    <span class="w-2 h-2 rounded-full bg-outline-variant"></span>
+                                    <span class="w-2 h-2 rounded-full bg-outline-variant"></span>
+                                </div>
+                            </div>
+
+                        </div>
+                        <!--  Skeleton Content -->
+                        <div class="flex-1 relative bg-[#0a0a0a] overflow-hidden p-8">
+
+
+                            <iframe id="chart"
+                                src="https://s.tradingview.com/widgetembed/?symbol=AAPL&interval=D&theme=dark"
+                                width="100%" height="400" frameborder="0">
+                            </iframe>
+
+
+                            <div class="relative h-full w-full flex flex-col justify-end gap-1">
+                                <div class="flex items-end gap-2 h-full">
+                                    <div
+                                        class="w-full h-1/2 bg-secondary/5 rounded-t-sm border-t border-secondary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-2/3 bg-secondary/5 rounded-t-sm border-t border-secondary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-1/3 bg-secondary/5 rounded-t-sm border-t border-secondary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-3/4 bg-primary/5 rounded-t-sm border-t border-primary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-1/2 bg-primary/5 rounded-t-sm border-t border-primary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-2/3 bg-secondary/5 rounded-t-sm border-t border-secondary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-5/6 bg-secondary/5 rounded-t-sm border-t border-secondary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-4/5 bg-secondary/5 rounded-t-sm border-t border-secondary/20 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-1/2 bg-secondary/10 rounded-t-sm border-t border-secondary/40 shimmer">
+                                    </div>
+                                    <div
+                                        class="w-full h-full bg-secondary/20 rounded-t-sm border-t border-secondary/60 shimmer">
+                                    </div>
+                                </div>
+                                <div class="h-[1px] w-full bg-outline-variant/30"></div>
+                            </div>
+                        </div>
+                        <!-- Chart Bottom Info -->
+                        <div class="p-4 bg-surface-container-low/50 flex justify-between">
+                            <div class="flex gap-6">
+
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-secondary text-sm">auto_graph</span>
+                                <span class="text-[10px] font-bold text-secondary uppercase tracking-widest">AI
+                                    Prediction Layer Active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right: Analysis Modules (40%) -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Signal Engine -->
+                    <div class="glass-panel rounded-2xl p-6">
+                        <div class="flex items-center gap-2 mb-6">
+                            <span class="material-symbols-outlined text-primary">radar</span>
+                            <h3 class="text-sm font-bold tracking-tight">Signal Engine</h3>
+                        </div>
+                        <ul id="signals" class="space-y-2 text-sm"></ul>
+                    </div>
+                    <!-- Trade Plan -->
+
+                    <div class="bg-primary/5 border border-primary/20 rounded-2xl p-6">
+
+                        <h3 class="text-sm font-bold mb-4">Trade Plan</h3>
+
+                        <div class="grid grid-cols-2 gap-4">
+
+                            <div class="p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+                                <p class="text-[9px] uppercase text-on-surface-variant mb-1">Entry</p>
+                                <p id="entry" class="text-xl font-bold text-white"></p>
+                            </div>
+
+                            <div class="p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+                                <p class="text-[9px] uppercase text-on-surface-variant mb-1">Stop Loss</p>
+                                <p id="sl" class="text-xl font-bold text-error"></p>
+                            </div>
+
+                            <div class="p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+                                <p class="text-[9px] uppercase text-on-surface-variant mb-1">Target</p>
+                                <p id="target" class="text-xl font-bold text-secondary"></p>
+                            </div>
+
+                            <div class="p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+                                <p class="text-[9px] uppercase text-on-surface-variant mb-1">Risk/Reward</p>
+                                <p id="rr" class="text-xl font-bold text-primary"></p>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <button onclick="runBacktest()"
+                        class="w-full mt-4 px-4 py-2 bg-secondary/20 border border-secondary/30 rounded-lg hover:bg-secondary/40 transition">
+                        Run Backtest
+                    </button>
+                    <button onclick="loadModelStats()"
+                        class="w-full mt-2 px-4 py-2 bg-primary/20 border border-primary/30 rounded-lg hover:bg-primary/40 transition">
+                        Model Analysis
+                    </button>
+                    <div id="modelStats" class="mt-4 text-sm text-white"></div>
+
+                    <div id="backtestResult" class="mt-4 text-sm text-white"></div>
+
+                    <!-- Market Structure -->
+                    <div class="glass-panel rounded-2xl p-6">
+
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center py-2 border-b border-outline-variant/5">
+                                <span class="text-xs text-on-surface-variant uppercase tracking-wider">Primary
+                                    Trend</span>
+                                <span class="text-sm font-bold text-secondary">Uptrend</span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-outline-variant/5">
+                                <span class="text-xs text-on-surface-variant uppercase tracking-wider">Volatility
+                                    Shell</span>
+                                <span class="text-sm font-bold text-white">Low</span>
+                            </div>
+                            <div class="flex justify-between items-center py-2">
+                                <span class="text-xs text-on-surface-variant uppercase tracking-wider">Relative Strength
+                                    Index</span>
+                                <span class="text-sm font-bold text-white">64.20</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- AI Insight Section -->
+            <section>
+                <div
+                    class="relative rounded-3xl p-[1px] bg-gradient-to-r from-primary/30 via-secondary/30 to-tertiary/30">
+                    <div class="bg-surface-container-lowest rounded-[23px] p-8 md:p-10">
+                        <div class="flex flex-col md:flex-row gap-8 items-start">
+                            <div
+                                class="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shrink-0 shadow-[0_0_30px_rgba(186,158,255,0.3)]">
+                                <span class="material-symbols-outlined text-3xl text-on-primary"
+                                    style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+                            </div>
+                            <div class="space-y-4">
+                                <h2
+                                    class="font-headline text-2xl font-bold tracking-tight text-white flex items-center gap-3">
+                                    Oracle Synthetic Intelligence Analysis
+                                    <span
+                                        class="px-2 py-0.5 bg-secondary-container/20 text-secondary text-[8px] font-black uppercase rounded border border-secondary/20">Realtime
+                                        Engine</span>
+                                </h2>
+                                <div class="space-y-4 text-on-surface-variant text-base leading-relaxed max-w-4xl">
+                                    <p id="ai" class="text-sm"></p>
+                                </div>
+                                <div class="pt-4 flex gap-6">
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-sm text-secondary">done_all</span>
+                                        <span class="text-[10px] font-bold uppercase tracking-widest">Sentiment:
+                                            Overwhelmingly Bullish</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-sm text-primary">query_stats</span>
+                                        <span class="text-[10px] font-bold uppercase tracking-widest">Sector Strength:
+                                            8.4/10</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+    <!-- Background Elements -->
+    <div class="fixed top-0 left-0 w-full h-full -z-10 pointer-events-none opacity-40">
+        <div class="absolute top-[10%] left-[5%] w-[40vw] h-[40vw] bg-primary/5 blur-[150px] rounded-full"></div>
+        <div class="absolute bottom-[10%] right-[5%] w-[30vw] h-[30vw] bg-secondary/5 blur-[150px] rounded-full"></div>
+    </div>
+
+    <script>
+        console.log("JS RUNNING");
+        let currentSymbol = "AAPL"
+        let watchlist = JSON.parse(localStorage.getItem("watchlist")) || ["AAPL", "TSLA"];
+
+        async function fetchStock(symbol) {
+            if (typeof symbol !== "string") return;
+            currentSymbol = symbol;
+
+            console.log("Current symbol set: ", symbol); // ADD
+
+            document.getElementById("verdict").innerText = "Analyzing...";
+            document.getElementById("confidence").innerText = "...";
+
+            document.getElementById("price").innerText = "...";
+            document.getElementById("signals").innerHTML = "Loading...";
+            document.getElementById("entry").innerText = "...";
+            document.getElementById("sl").innerText = "...";
+            document.getElementById("target").innerText = "...";
+            document.getElementById("rr").innerText = "...";
+
+
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/predict?symbol=${symbol}`);
+                const data = await res.json();
+
+                updateUI(data);
+            } catch {
+                alert("Error fetching stock");
+            }
+        }
+
+        function updateUI(data) {
+            if (!data || data.error) {
+                alert("Invalid stock or API error");
+                return;
+            }
+            document.getElementById("chart").src =
+                `https://s.tradingview.com/widgetembed/?symbol=${data.symbol}&interval=D&theme=dark`;
+            document.getElementById("stockName").innerText =
+                (data.company ? data.company : data.symbol) + " (" + data.symbol + ")";
+
+            let currency = data.symbol.includes(".NS") ? "₹" : "$";
+
+            document.getElementById("price").innerText =
+                data.price ? currency + data.price : "N/A";
+
+            document.getElementById("verdict").innerText =
+                data.prediction || "N/A";
+
+            document.getElementById("confidence").innerText =
+                (data.confidence || 0) + "%";
+
+            // SIGNALS
+            const signals = document.getElementById("signals");
+            signals.innerHTML = "";
+
+            if (data.signals) {
+                data.signals.forEach(s => {
+                    signals.innerHTML += `<li class="text-sm text-white/80">${s}</li>`;
+                });
+            }
+
+            // TRADE PLAN
+            document.getElementById("entry").innerText =
+                data.trade_plan?.entry || "-";
+
+            document.getElementById("sl").innerText =
+                data.trade_plan?.stop_loss || "-";
+
+            document.getElementById("target").innerText =
+                data.trade_plan?.target || "-";
+
+            document.getElementById("rr").innerText =
+                data.trade_plan?.risk_reward || "-";
+
+            // AI
+            document.getElementById("ai").innerText =
+                data.ai_analysis || "No insight available";
+        }
+
+        async function searchStock(query) {
+            if (!query) {
+                document.getElementById("dropdown").innerHTML = "";
+                return;
+            }
+
+            const res = await fetch(`http://127.0.0.1:8000/search?query=${query}`);
+            const data = await res.json();
+
+            const dropdown = document.getElementById("dropdown");
+            dropdown.innerHTML = "";
+
+            data.forEach(stock => {
+                const div = document.createElement("div");
+                div.innerText = `${stock.name} (${stock.symbol})`;
+                div.className = "p-2 hover:bg-white/10 cursor-pointer";
+
+                div.onclick = () => {
+                    console.log("Clicked:", stock.symbol); // DEBUG
+                    selectStock(stock.symbol);
+                };
+
+                dropdown.appendChild(div);
+            });
+        }
+
+        function selectStock(symbol) {
+            // console.log("Selected:", symbol);
+            document.getElementById("searchInput").value = symbol;
+            document.getElementById("dropdown").innerHTML = "";
+            fetchStock(symbol);
+        }
+
+        function addToWatchlist() {
+            if (!currentSymbol) {
+                alert("Search stock first");
+                return;
+            }
+
+            if (!watchlist.includes(currentSymbol)) {
+                watchlist.push(currentSymbol);
+                renderWatchlist();
+                localStorage.setItem("watchlist", JSON.stringify(watchlist));
+                alert(currentSymbol + " added to watchlist  ✅");
+            }
+            else {
+                alert("Already in watchlist");
+            }
+        }
+
+        async function loadBestStock() {
+            try {
+                const res = await fetch("http://127.0.0.1:8000/top-opportunity");
+                const data = await res.json();
+
+                if (!data || data.error || !data.symbol) {
+                    alert("No best stock found");
+                    return;
+                }
+
+                fetchStock(data.symbol);
+
+            } catch {
+                alert("Error loading best stock");
+            }
+        }
+
+        async function loadModelStats() {
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/model-stats?symbol=${currentSymbol}`);
+                const data = await res.json();
+
+                document.getElementById("modelStats").innerHTML = `
+            <div>DT Accuracy: ${data.decision_tree_accuracy}%</div>
+            <div>RF Accuracy: ${data.random_forest_accuracy}%</div>
+            <div>LR Accuracy: ${data.logistic_accuracy}%</div>
+
+            <br/>
+
+            <div>DT Confusion Matrix: ${JSON.stringify(data.decision_tree_cm)}</div>
+            <div>RF Confusion Matrix: ${JSON.stringify(data.random_forest_cm)}</div>
+            <div>LR Confusion Matrix: ${JSON.stringify(data.logistic_cm)}</div>
+        `;
+            } catch {
+                alert("Model stats failed");
+            }
+        }
+
+        async function runBacktest() {
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/backtest?symbol=${currentSymbol}`);
+                const data = await res.json();
+
+                document.getElementById("backtestResult").innerHTML = `
+            <div>Accuracy: ${data.accuracy}%</div>
+            <div>Total Trades: ${data.total_trades}</div>
+            <div>Wins: ${data.wins}</div>
+            <div>Losses: ${data.losses}</div>
+        `;
+            } catch {
+                alert("Backtest failed");
+            }
+        }
+
+        function renderWatchlist() {
+            const nav = document.getElementById("watchlistNavbar");
+            const side = document.getElementById("watchlistSidebar");
+
+            if (!nav || !side) return;
+
+            nav.innerHTML = "";
+            side.innerHTML = "";
+
+            watchlist.forEach(s => {
+                // NAVBAR STYLE
+                nav.innerHTML += `
+<span class="px-3 py-1 bg-primary/20 border border-primary/30 rounded-lg cursor-pointer hover:bg-primary/40"
+onclick="fetchStock('${s}')">${s}</span>
+`;
+
+                // SIDEBAR STYLE
+                side.innerHTML += `
+            <div class="p-2 bg-white/5 rounded cursor-pointer hover:bg-white/10"
+            onclick="fetchStock('${s}')">${s}</div>
+        `;
+            });
+        }
+
+        fetchStock("AAPL");
+        renderWatchlist();
+
+
+
+
+    </script>
+</body>
+
 </html>
