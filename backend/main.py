@@ -57,27 +57,27 @@ def train_model():
    
     symbols = [
     # US BIG TECH
-    "AAPL","TSLA","MSFT","GOOGL","AMZN","META","NVDA","AMD","NFLX","INTC",
+    "AAPL","TSLA","MSFT","GOOGL","AMZN",
 
     # FINANCE
     "JPM","GS","BAC","MS",
 
     # OTHER
-    "UBER","DIS","PYPL","CRM","ADBE","CSCO","QCOM","SHOP",
+    "UBER","DIS","PYPL","CRM","ADBE",
 
     # INDIA
-    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
-    "SBIN.NS","ITC.NS","LT.NS","WIPRO.NS","AXISBANK.NS",
-    "BAJFINANCE.NS","MARUTI.NS","TITAN.NS","ADANIENT.NS","ONGC.NS"
-    ]
+    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"
+     ]
 
     all_data = []
 
-    if not all_data:
-        raise Exception("No data fetched — training failed")
-
+    
     for s in symbols:
-        temp_df = get_stock_data(s)
+        try:
+            temp_df = get_stock_data(s)
+        except Exception as e:
+            print(f"❌ Failed for {s}: {e}")
+            continue
 
     # ✅ FORCE CLEAN SINGLE-LEVEL COLUMNS
         if isinstance(temp_df.columns, pd.MultiIndex):
@@ -91,6 +91,11 @@ def train_model():
             all_data.append(temp_df)
 
     df = pd.concat(all_data, ignore_index=True)
+    # ✅ ADD HERE (correct place)
+    if not all_data:
+        print("🔥 No data fetched — skipping training")
+        return
+    
     df = df.reset_index(drop=True)
 
     X = df[["RSI", "MA20", "MA50", "momentum", "volatility"]]
