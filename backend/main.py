@@ -1,5 +1,5 @@
-print("🔥 AN MAIN RUNNING")
-
+import joblib
+import os
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from data import get_stock_data, get_stock_info
@@ -7,6 +7,7 @@ from ai import analyze_stock_ai
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 
 import pandas as pd
 
@@ -15,6 +16,7 @@ print("🔥 CLEAN MAIN RUNNING")
 dt_model = None
 rf_model = None
 lr_model = None
+scaler = None
 
 app = FastAPI()
 
@@ -50,18 +52,62 @@ def prepare_features(df):
 
 @app.on_event("startup")
 def train_model():
-    global dt_model, rf_model, lr_model
+    global dt_model, rf_model, lr_model, scaler
 
-    df = get_stock_data("AAPL")
-    df = prepare_features(df)
+   
+    symbols = [
+    # US BIG TECH
+    "AAPL","TSLA","MSFT","GOOGL","AMZN","META","NVDA","AMD","NFLX","INTC",
+
+    # FINANCE
+    "JPM","GS","BAC","MS",
+
+    # OTHER
+    "UBER","DIS","PYPL","CRM","ADBE","CSCO","QCOM","SHOP",
+
+    # INDIA
+    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
+    "SBIN.NS","ITC.NS","LT.NS","WIPRO.NS","AXISBANK.NS",
+    "BAJFINANCE.NS","MARUTI.NS","TITAN.NS","ADANIENT.NS","ONGC.NS"
+    ]
+
+    all_data = []
+
+    if not all_data:
+        raise Exception("No data fetched — training failed")
+
+    for s in symbols:
+        temp_df = get_stock_data(s)
+
+    # ✅ FORCE CLEAN SINGLE-LEVEL COLUMNS
+        if isinstance(temp_df.columns, pd.MultiIndex):
+            temp_df.columns = temp_df.columns.get_level_values(0)
+
+        temp_df = temp_df.loc[:, ~temp_df.columns.duplicated()]  # remove duplicates
+
+        temp_df = prepare_features(temp_df)
+
+        if not temp_df.empty:
+            all_data.append(temp_df)
+
+    df = pd.concat(all_data, ignore_index=True)
+    df = df.reset_index(drop=True)
 
     X = df[["RSI", "MA20", "MA50", "momentum", "volatility"]]
-    df["target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+   
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X)
+    # ✅ FORCE SINGLE CLOSE COLUMN
+    
+    df["Close"] = df["Close"].astype(float)
+    df["target"] = (df["Close"].shift(-1) > df["Close"]).astype(int) 
+
     y = df["target"]
 
     X = X[:-1]
     y = y[:-1]
-
+    
     dt_model = DecisionTreeClassifier(max_depth=5)
     rf_model = RandomForestClassifier(n_estimators=50)
     lr_model = LogisticRegression()
@@ -71,6 +117,10 @@ def train_model():
     lr_model.fit(X, y)
 
     print("ALL MODELS TRAINED")
+    joblib.dump(dt_model, "dt.pkl")
+    joblib.dump(rf_model, "rf.pkl")
+    joblib.dump(lr_model, "lr.pkl")
+    joblib.dump(scaler, "scaler.pkl")
 
 
 @app.get("/search")
@@ -134,12 +184,22 @@ def search_stock(query: str):
 
 @app.get("/predict")
 def predict(symbol: str = Query("AAPL")):
+
     df = get_stock_data(symbol)
+    # ✅ STEP 3 — FIX MULTI-INDEX (PASTE HERE)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    # ✅ STEP 4 — CLEAN DATA (PASTE HERE)
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df.dropna(inplace=True)
 
     if df.empty:
         return {"error": "Invalid symbol"}
 
     df = prepare_features(df)
+    if df is None or df.empty or len(df) < 50:
+        return {"error": "Not enough data from API"}
 
     if df.empty:
         return {"error": "Not enough data"}
@@ -154,6 +214,7 @@ def predict(symbol: str = Query("AAPL")):
         return {"error": "Models not trained yet"}
 
     features = latest[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
+    features = scaler.transform(features)
     dt_pred = dt_model.predict(features)[0]
     rf_pred = rf_model.predict(features)[0]
     lr_pred = lr_model.predict(features)[0]
@@ -234,13 +295,33 @@ def predict(symbol: str = Query("AAPL")):
     # ===== AI =====
     trend = "Uptrend" if ma20 > ma50 else "Downtrend"
 
+    reason = []
+
+    if ma20 > ma50:
+        reason.append("Bullish trend (MA crossover)")
+    else:
+        reason.append("Bearish trend (MA crossover)")
+
+    if rsi < 30:
+        reason.append("Stock oversold")
+    elif rsi > 70:
+        reason.append("Stock overbought")
+
+    if momentum > 0:
+        reason.append("Positive momentum")
+    else:
+        reason.append("Negative momentum")
+
     ai_analysis = analyze_stock_ai(
-        symbol,
-        trend,
-        round(rsi, 2),
-        prediction,
-        confidence
-    )
+    symbol,
+    trend,
+    round(rsi, 2),
+    prediction,
+    confidence
+)
+
+    ai_analysis += "\n\nReasons:\n" + ", ".join(reason)
+
 
     # ===== COMPANY INFO =====
     info = get_stock_info(symbol)
@@ -253,8 +334,15 @@ def predict(symbol: str = Query("AAPL")):
     else:
         rr = "-"
 
+    best_model = max([
+        ("Decision Tree", dt_prob),
+        ("Random Forest", rf_prob),
+        ("Logistic", lr_prob)
+    ], key=lambda x: x[1])[0]
+
     return {
         "symbol": symbol,
+        "best_model": best_model,
         "company": info.get("name", symbol),
         "price": round(price, 2),
         "prediction": prediction,
@@ -291,26 +379,27 @@ def top_opportunity():
         "BAJFINANCE.NS","MARUTI.NS","TITAN.NS","ADANIENT.NS","ONGC.NS"
     ]
 
-    best_stock = None
-    best_conf = 0
+    results = []   # ✅ STORE ALL STOCKS
 
     for s in symbols:
         try:
             res = predict(s)
 
             if "confidence" in res and isinstance(res["confidence"], (int, float)):
-                if res["confidence"] > best_conf:
-                    best_conf = res["confidence"]
-                    best_stock = res
+                results.append({
+                    "symbol": res["symbol"],
+                    "confidence": res["confidence"],
+                    "prediction": res["prediction"]
+                })
 
-        except Exception as e:
+        except:
             continue
 
-    if not best_stock:
-        return {"error": "No opportunity found"}
+    # ✅ SORT ALL STOCKS
+    results = sorted(results, key=lambda x: x["confidence"], reverse=True)
 
-    return best_stock
-
+    # ✅ RETURN TOP 3
+    return results[:3]
 
 @app.get("/backtest")
 def backtest(symbol: str = "AAPL"):
@@ -357,13 +446,69 @@ def backtest(symbol: str = "AAPL"):
 
     accuracy = round((correct / total) * 100, 2) if total else 0
 
+    capital = 10000
+    profit = 0
+
+    for i in range(50, len(df) - 1):
+        row = df.iloc[i]
+        next_price = float(df.iloc[i + 1]["Close"])
+        current_price = float(row["Close"])
+
+        features = row[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
+
+        pred = dt_model.predict(features)[0]
+
+        trade_amount = 1000  # fixed per trade
+
+        if pred == 1:  # BUY
+            change = (next_price - current_price) / current_price
+        else:  # SELL
+            change = (current_price - next_price) / current_price
+
+        pnl = trade_amount * change
+        profit += pnl
+
+    final_capital = capital + profit
+
     return {
-        "symbol": symbol,
-        "accuracy": accuracy,
-        "total_trades": total,
-        "wins": wins,
-        "losses": losses
+    "symbol": symbol,
+    "accuracy": round((wins / total) * 100, 2),
+    "total_trades": total,
+    "wins": wins,
+    "losses": losses,
+    "profit": round(profit, 2),
+    "final_capital": round(final_capital, 2)
     }
+
+@app.get("/simulate-profit")
+def simulate_profit(symbol: str = "AAPL"):
+    df = get_stock_data(symbol)
+    df = prepare_features(df)
+
+    capital = 10000
+    position = 0
+
+    for i in range(50, len(df) - 1):
+        row = df.iloc[i]
+        features = row[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
+
+        pred = rf_model.predict(features)[0]
+
+        next_price = float(df.iloc[i + 1]["Close"])
+        current_price = float(row["Close"])
+
+        if pred == 1:  # BUY
+            profit = next_price - current_price
+        else:  # SELL
+            profit = current_price - next_price
+
+        capital += profit
+
+    return {
+        "final_capital": round(capital, 2),
+        "profit": round(capital - 10000, 2)
+    }
+
 
 @app.get("/model-stats")
 def model_stats(symbol: str = "AAPL"):

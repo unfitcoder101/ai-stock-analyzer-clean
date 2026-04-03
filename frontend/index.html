@@ -160,10 +160,7 @@
                 <div class="w-8 h-8 bg-secondary/10 rounded-lg flex items-center justify-center text-secondary">
                     <span class="material-symbols-outlined text-lg">hub</span>
                 </div>
-                <div>
-                    <h4 class="text-white text-xs font-bold leading-none">System Status</h4>
-                    <p class="text-[10px] text-secondary mt-1 uppercase tracking-tighter">All Engines Nominal</p>
-                </div>
+               
             </div>
         </div>
         <nav class="flex-1 space-y-1">
@@ -234,6 +231,11 @@
                                 <span
                                     class="relative font-headline text-8xl font-black italic tracking-tighter text-secondary ticker-glow"><span
                                         id="verdict">BUY</span></span>
+                                <div id="loader" class="hidden text-sm text-primary mt-2 animate-pulse">
+                                    Analyzing stock...
+                                </div>
+
+                                <div id="errorBox" class="hidden text-red-400 text-sm mt-2"></div>
                             </div>
                             <div class="w-full md:w-64 mt-4">
                                 <div
@@ -242,8 +244,8 @@
                                     <span class="text-secondary"><span id="confidence">0%</span></span>
                                 </div>
                                 <div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
-                                    <div
-                                        class="h-full bg-gradient-to-r from-secondary to-primary w-[94%] rounded-full shadow-[0_0_10px_rgba(83,221,252,0.5)]">
+                                    <div id="confidenceBar"
+                                        class="h-full bg-gradient-to-r from-secondary to-primary rounded-full">
                                     </div>
                                 </div>
                             </div>
@@ -374,18 +376,31 @@
                         </div>
                     </div>
 
-                    <button onclick="runBacktest()"
-                        class="w-full mt-4 px-4 py-2 bg-secondary/20 border border-secondary/30 rounded-lg hover:bg-secondary/40 transition">
-                        Run Backtest
-                    </button>
-                    <button onclick="loadModelStats()"
-                        class="w-full mt-2 px-4 py-2 bg-primary/20 border border-primary/30 rounded-lg hover:bg-primary/40 transition">
-                        Model Analysis
-                    </button>
-                    <div id="modelStats" class="mt-4 text-sm text-white"></div>
+                    <div class="glass-panel rounded-2xl p-6 space-y-4">
 
-                    <div id="backtestResult" class="mt-4 text-sm text-white"></div>
+    <!-- BACKTEST -->
+    <button onclick="runBacktest()"
+        class="w-full px-4 py-2 bg-secondary/20 border border-secondary/30 rounded-lg hover:bg-secondary/40">
+        Run Backtest
+    </button>
+    <div id="backtestResult" class="text-sm text-white"></div>
 
+    <!-- MODEL -->
+    <button onclick="loadModelStats()"
+        class="w-full px-4 py-2 bg-primary/20 border border-primary/30 rounded-lg hover:bg-primary/40">
+        Model Analysis
+    </button>
+    <div id="modelStats" class="text-sm text-white"></div>
+
+    <!-- PROFIT -->
+    <button onclick="runProfitSim()"
+        class="w-full px-4 py-2 bg-green-500/20 border border-green-400 rounded-lg hover:bg-green-500/40">
+        Profit Simulation
+    </button>
+    <div id="profitResult" class="text-sm text-white"></div>
+
+</div>
+                   
                     <!-- Market Structure -->
                     <div class="glass-panel rounded-2xl p-6">
 
@@ -448,6 +463,18 @@
                     </div>
                 </div>
             </section>
+
+
+            <button onclick="loadTopStocks()"
+class="w-full mb-3 px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-lg hover:bg-purple-500/40">
+    Load Top Opportunities
+</button>
+            <!-- 🔥 TOP OPPORTUNITIES -->
+<div class="glass-panel rounded-2xl p-6">
+    <h3 class="text-sm font-bold mb-4">🔥 Top Opportunities</h3>
+    <div id="topStocks" class="space-y-2 text-sm"></div>
+</div>
+
         </div>
     </main>
     <!-- Background Elements -->
@@ -463,12 +490,14 @@
 
         async function fetchStock(symbol) {
             if (typeof symbol !== "string") return;
-            currentSymbol = symbol;
 
-            console.log("Current symbol set: ", symbol); // ADD
+            currentSymbol = symbol;
 
             document.getElementById("verdict").innerText = "Analyzing...";
             document.getElementById("confidence").innerText = "...";
+
+            document.getElementById("loader").classList.remove("hidden");
+            document.getElementById("errorBox").classList.add("hidden");
 
             document.getElementById("price").innerText = "...";
             document.getElementById("signals").innerHTML = "Loading...";
@@ -477,15 +506,21 @@
             document.getElementById("target").innerText = "...";
             document.getElementById("rr").innerText = "...";
 
-
             try {
-                const res = await fetch(`http://127.0.0.1:8000/predict?symbol=${symbol}`);
+                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/predict?symbol=${symbol}`);
                 const data = await res.json();
+
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
 
                 updateUI(data);
             } catch {
-                alert("Error fetching stock");
+                showError("Failed to fetch data. Try again.");
             }
+
+            document.getElementById("loader").classList.add("hidden");
         }
 
         function updateUI(data) {
@@ -499,12 +534,21 @@
                 (data.company ? data.company : data.symbol) + " (" + data.symbol + ")";
 
             let currency = data.symbol.includes(".NS") ? "₹" : "$";
-
+            document.getElementById("confidenceBar").style.width =
+                (data.confidence || 0) + "%";
             document.getElementById("price").innerText =
                 data.price ? currency + data.price : "N/A";
 
-            document.getElementById("verdict").innerText =
-                data.prediction || "N/A";
+            const verdict = document.getElementById("verdict");
+            verdict.innerText = data.prediction;
+
+            if (data.prediction === "BUY") {
+                verdict.style.color = "#00ff9f";
+            } else if (data.prediction === "SELL") {
+                verdict.style.color = "#ff4d4d";
+            } else {
+                verdict.style.color = "#facc15";
+            }
 
             document.getElementById("confidence").innerText =
                 (data.confidence || 0) + "%";
@@ -535,7 +579,7 @@
             // AI
             document.getElementById("ai").innerText =
                 data.ai_analysis || "No insight available";
-        }
+        } 
 
         async function searchStock(query) {
             if (!query) {
@@ -543,7 +587,7 @@
                 return;
             }
 
-            const res = await fetch(`http://127.0.0.1:8000/search?query=${query}`);
+            const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/search?query=${query}`);
             const data = await res.json();
 
             const dropdown = document.getElementById("dropdown");
@@ -589,7 +633,7 @@
 
         async function loadBestStock() {
             try {
-                const res = await fetch("http://127.0.0.1:8000/top-opportunity");
+                const res = await fetch("https://ai-stock-backend-4uuw.onrender.com/top-opportunity");
                 const data = await res.json();
 
                 if (!data || data.error || !data.symbol) {
@@ -605,71 +649,160 @@
         }
 
         async function loadModelStats() {
+            document.getElementById("modelStats").innerText = "Analyzing models...";
             try {
-                const res = await fetch(`http://127.0.0.1:8000/model-stats?symbol=${currentSymbol}`);
+                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/model-stats?symbol=${currentSymbol}`);
                 const data = await res.json();
 
                 document.getElementById("modelStats").innerHTML = `
-            <div>DT Accuracy: ${data.decision_tree_accuracy}%</div>
-            <div>RF Accuracy: ${data.random_forest_accuracy}%</div>
-            <div>LR Accuracy: ${data.logistic_accuracy}%</div>
+    <div class="space-y-2">
+        <div>DT Accuracy: ${data.decision_tree_accuracy}%</div>
+        <div>RF Accuracy: ${data.random_forest_accuracy}%</div>
+        <div>LR Accuracy: ${data.logistic_accuracy}%</div>
 
-            <br/>
+        <br/>
 
-            <div>DT Confusion Matrix: ${JSON.stringify(data.decision_tree_cm)}</div>
-            <div>RF Confusion Matrix: ${JSON.stringify(data.random_forest_cm)}</div>
-            <div>LR Confusion Matrix: ${JSON.stringify(data.logistic_cm)}</div>
-        `;
+        <div class="font-bold">Decision Tree CM:</div>
+<pre style="font-family: monospace;">${formatMatrix(data.decision_tree_cm)}</pre>
+
+<div class="font-bold">Random Forest CM:</div>
+<pre style="font-family: monospace;">${formatMatrix(data.random_forest_cm)}</pre>
+
+<div class="font-bold">Logistic CM:</div>
+<pre style="font-family: monospace;">${formatMatrix(data.logistic_cm)}</pre>
+    </div>
+`;
             } catch {
-                alert("Model stats failed");
+                document.getElementById("backtestResult").innerText = "Error running backtest";
+                document.getElementById("modelStats").innerText = "Error loading model stats";
             }
+        }
+
+        function formatMatrix(cm) {
+            return `
+    [ ${cm[0][0]}  ${cm[0][1]} ]
+    [ ${cm[1][0]}  ${cm[1][1]} ]
+    `;
         }
 
         async function runBacktest() {
+            document.getElementById("backtestResult").innerText = "Running backtest...";
             try {
-                const res = await fetch(`http://127.0.0.1:8000/backtest?symbol=${currentSymbol}`);
+                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/backtest?symbol=${currentSymbol}`);
                 const data = await res.json();
+                // ✅ STEP 5: currency detection
+const isIndian = currentSymbol.includes(".NS");
+const currency = isIndian ? "₹" : "$";
 
                 document.getElementById("backtestResult").innerHTML = `
-            <div>Accuracy: ${data.accuracy}%</div>
-            <div>Total Trades: ${data.total_trades}</div>
-            <div>Wins: ${data.wins}</div>
-            <div>Losses: ${data.losses}</div>
+            Accuracy: ${data.accuracy}% <br>
+            Total Trades: ${data.total_trades} <br>
+            Wins: ${data.wins} <br>
+            Losses: ${data.losses} <br>
+            Profit: <span style="color:${data.profit >= 0 ? 'lime' : 'red'}">${currency}${data.profit}</span><br>
+Final Capital: <span style="color:#00ffcc">${currency}${data.final_capital}</span>
         `;
             } catch {
-                alert("Backtest failed");
+                document.getElementById("backtestResult").innerText = "Error running backtest";
+                document.getElementById("modelStats").innerText = "Error loading model stats";
             }
         }
 
-        function renderWatchlist() {
-            const nav = document.getElementById("watchlistNavbar");
-            const side = document.getElementById("watchlistSidebar");
+function renderWatchlist() {
+    const nav = document.getElementById("watchlistNavbar");
+    const side = document.getElementById("watchlistSidebar");
 
-            if (!nav || !side) return;
+    if (!nav || !side) return;
 
-            nav.innerHTML = "";
-            side.innerHTML = "";
+    nav.innerHTML = "";
+    side.innerHTML = "";
 
-            watchlist.forEach(s => {
-                // NAVBAR STYLE
-                nav.innerHTML += `
-<span class="px-3 py-1 bg-primary/20 border border-primary/30 rounded-lg cursor-pointer hover:bg-primary/40"
-onclick="fetchStock('${s}')">${s}</span>
-`;
-
-                // SIDEBAR STYLE
-                side.innerHTML += `
-            <div class="p-2 bg-white/5 rounded cursor-pointer hover:bg-white/10"
-            onclick="fetchStock('${s}')">${s}</div>
+    watchlist.forEach(s => {
+        // NAVBAR
+        nav.innerHTML += `
+        <span class="px-3 py-1 bg-primary/20 border border-primary/30 rounded-lg flex items-center gap-1">
+            <span onclick="fetchStock('${s}')" class="cursor-pointer">${s}</span>
+            <span onclick="removeFromWatchlist('${s}')" style="color:red; cursor:pointer;">×</span>
+        </span>
         `;
-            });
-        }
 
+        // SIDEBAR
+        side.innerHTML += `
+        <div class="flex justify-between p-2 bg-white/5 rounded hover:bg-white/10">
+            <span onclick="fetchStock('${s}')" class="cursor-pointer">${s}</span>
+            <span onclick="removeFromWatchlist('${s}')" style="color:red; cursor:pointer;">×</span>
+        </div>
+        `;
+    });
+}
+function removeFromWatchlist(symbol) {
+    watchlist = watchlist.filter(s => s !== symbol);
+    localStorage.setItem("watchlist", JSON.stringify(watchlist));
+    renderWatchlist();
+}
         fetchStock("AAPL");
         renderWatchlist();
 
 
 
+        async function runProfitSim() {
+            try {
+                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/simulate-profit?symbol=${currentSymbol}`);
+                const data = await res.json();
+                // ✅ STEP 5: currency detection
+const isIndian = currentSymbol.includes(".NS");
+const currency = isIndian ? "₹" : "$";
+
+                document.getElementById("profitResult").innerHTML = `
+            Profit: <span style="color:${data.profit >= 0 ? 'lime' : 'red'}">${currency}${data.profit}</span><br>
+Final Capital: <span style="color:#00ffcc">${currency}${data.final_capital}</span>
+        `;
+            } catch {
+                alert("Profit simulation failed");
+            }
+        }
+
+        function showError(msg) {
+            const box = document.getElementById("errorBox");
+            box.innerText = msg;
+            box.classList.remove("hidden");
+
+            document.getElementById("loader").classList.add("hidden");
+        }
+
+        async function loadTopStocks() {
+    try {
+        const res = await fetch("https://ai-stock-backend-4uuw.onrender.com/top-opportunity");
+        const data = await res.json();
+
+        const container = document.getElementById("topStocks");
+        container.innerHTML = "";
+
+        if (data.error) {
+    document.getElementById("topStocks").innerText = "No opportunities found";
+    return;
+}
+
+// if single object → convert to array
+if (!Array.isArray(data)) {
+    data = [data];
+}
+
+        data.forEach(stock => {
+            container.innerHTML += `
+                <div onclick="fetchStock('${stock.symbol}')"
+                     class="cursor-pointer p-2 rounded hover:bg-white/10 flex justify-between">
+                    <span>${stock.symbol}</span>
+                    <span>${stock.confidence}% (${stock.prediction})</span>
+                </div>
+            `;
+        });
+
+    } catch {
+        console.log("Top stocks failed");
+    }
+}
+loadTopStocks();
 
     </script>
 </body>
