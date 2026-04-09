@@ -2,6 +2,11 @@ import yfinance as yf
 import pandas as pd
 
 def get_stock_data(symbol):
+    import time
+    import random
+
+    time.sleep(random.uniform(0.1, 0.3))
+
     try:
         df = yf.download(symbol, period="1y", progress=False)
         if df is None or df.empty:

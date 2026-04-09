@@ -8,6 +8,8 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier 
+import shap
 
 import pandas as pd
 
@@ -16,7 +18,24 @@ print("🔥 CLEAN MAIN RUNNING")
 dt_model = None
 rf_model = None
 lr_model = None
+xgb_model = None 
 scaler = None
+explainer = None   # ✅ ADD
+
+model_weights = {
+    "dt": 0.25,
+    "rf": 0.25,
+    "lr": 0.25,
+    "xgb": 0.25
+}
+
+# ✅ ADD MEMORY
+model_performance = {
+    "dt": [],
+    "rf": [],
+    "lr": [],
+    "xgb": []
+}
 
 app = FastAPI()
 
@@ -52,7 +71,7 @@ def prepare_features(df):
 
 @app.on_event("startup")
 def train_model():
-    global dt_model, rf_model, lr_model, scaler
+    global dt_model, rf_model, lr_model, xgb_model,  scaler
 
    
     symbols = [
@@ -117,14 +136,31 @@ def train_model():
     rf_model = RandomForestClassifier(n_estimators=50)
     lr_model = LogisticRegression()
 
+    # ✅ NEW MODEL
+    xgb_model = XGBClassifier(
+        n_estimators=100,
+        max_depth=5,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        eval_metric="logloss",
+       )
+
+
     dt_model.fit(X, y)
     rf_model.fit(X, y)
     lr_model.fit(X, y)
+    xgb_model.fit(X, y)   # ✅ ADD
+
+# ✅ SHAP EXPLAINER
+    global explainer
+    explainer = shap.TreeExplainer(xgb_model)
 
     print("ALL MODELS TRAINED")
     joblib.dump(dt_model, "dt.pkl")
     joblib.dump(rf_model, "rf.pkl")
     joblib.dump(lr_model, "lr.pkl")
+    joblib.dump(xgb_model, "xgb.pkl") 
     joblib.dump(scaler, "scaler.pkl")
 
 
@@ -212,29 +248,70 @@ def predict(symbol: str = Query("AAPL")):
     latest = df.iloc[-1]
 
     # ===== PRICE =====
+
     price = float(latest["Close"])
 
     # ===== ML =====
-    if dt_model is None or rf_model is None or lr_model is None:
+    if dt_model is None or rf_model is None or lr_model is None or xgb_model is None:
         return {"error": "Models not trained yet"}
-
-    features = latest[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
-    features = scaler.transform(features)
+    
+    features_df = pd.DataFrame([latest[["RSI", "MA20", "MA50", "momentum", "volatility"]]])
+    features = scaler.transform(features_df)
     dt_pred = dt_model.predict(features)[0]
     rf_pred = rf_model.predict(features)[0]
     lr_pred = lr_model.predict(features)[0]
+    xgb_pred = xgb_model.predict(features)[0]   # ✅ ADD
 
+    # ✅ STORE LAST PREDICTIONS (for future learning system)
+    last_preds = {
+    "dt": int(dt_pred),
+    "rf": int(rf_pred),
+    "lr": int(lr_pred),
+    "xgb": int(xgb_pred),
+    "price": price
+    }
     dt_prob = dt_model.predict_proba(features)[0][1]
     rf_prob = rf_model.predict_proba(features)[0][1]
     lr_prob = lr_model.predict_proba(features)[0][1]
-    votes = dt_pred + rf_pred + lr_pred
+    xgb_prob = xgb_model.predict_proba(features)[0][1]
 
-    if votes >= 2:
+    score_ml = (
+    dt_pred * model_weights["dt"] +
+    rf_pred * model_weights["rf"] +
+    lr_pred * model_weights["lr"] +
+    xgb_pred * model_weights["xgb"]
+    )
+
+# ✅ SHAP VALUES
+    shap_values = explainer.shap_values(features)[0]
+
+    feature_names = ["RSI", "MA20", "MA50", "momentum", "volatility"]
+
+# Convert to readable format
+    shap_dict = {
+    feature_names[i]: float(shap_values[i])
+    for i in range(len(feature_names))
+    }
+
+# Sort by importance
+    shap_sorted = dict(sorted(shap_dict.items(), key=lambda x: abs(x[1]), reverse=True)) 
+
+    votes = dt_pred + rf_pred + lr_pred + xgb_pred
+
+# ✅ AGREEMENT LEVEL
+    agreement = f"{votes}/4 models bullish"
+
+    if score_ml >= 0.5:
         prediction = "BUY"
     else:
         prediction = "SELL"
 
-    confidence = round(((dt_prob + rf_prob + lr_prob) / 3) * 100, 2)
+    ml_confidence = round((
+    dt_prob * model_weights["dt"] +
+    rf_prob * model_weights["rf"] +
+    lr_prob * model_weights["lr"] +
+    xgb_prob * model_weights["xgb"]
+    ) * 100, 2)
 
     # ===== SIGNAL ENGINE =====
     ma20 = float(latest["MA20"])
@@ -268,11 +345,21 @@ def predict(symbol: str = Query("AAPL")):
         signals.append("Momentum Negative")
         score -= 1
 
+    # ✅ NORMALIZE TECH SCORE (VERY IMPORTANT)
+    technical_score = round(((score + 4) / 8) * 100, 2)
+    # ✅ FINAL COMBINED CONFIDENCE
+    confidence = round((ml_confidence + technical_score) / 2, 2)
+
+    
     # ===== FINAL DECISION =====
     # ===== FINAL DECISION (HYBRID) =====
-    if votes >= 2:
+    # 🔥 FINAL DECISION (FIXED)
+
+   # ✅ FINAL DECISION (HYBRID FIXED)
+
+    if score_ml >= 0.5 and score > 0:
         prediction = "BUY"
-    elif votes <= 1:
+    elif score_ml < 0.5 and score < 0:
         prediction = "SELL"
     else:
         prediction = "HOLD"
@@ -280,6 +367,10 @@ def predict(symbol: str = Query("AAPL")):
     # ===== SUPPORT / RESISTANCE =====
     support = float(df["Low"].rolling(20).min().iloc[-1])
     resistance = float(df["High"].rolling(20).max().iloc[-1])
+
+    # ✅ CAPITAL SETTINGS
+    capital = 10000   # you can make this dynamic later
+    risk_per_trade = 0.02  # 2% risk per trade
 
    # ===== TRADE PLAN (FIXED CLEAN LOGIC) =====
     if prediction == "BUY":
@@ -291,11 +382,23 @@ def predict(symbol: str = Query("AAPL")):
         entry = round(price, 2)
         stop_loss = round(max(resistance, price * 1.02), 2)
         target = round(min(support, price * 0.98), 2)
+    # ✅ POSITION SIZING
+    if prediction != "HOLD":
+        risk_per_unit = abs(entry - stop_loss)
 
+        if risk_per_unit > 0:
+            position_size = (capital * risk_per_trade) / risk_per_unit
+            position_size = int(position_size)
+        else:
+            position_size = 0
+
+        capital_used = round(position_size * entry, 2)
     else:
         entry = "-"
         stop_loss = "-"
         target = "-"
+        position_size = 0
+        capital_used = 0
 
     # ===== AI =====
     trend = "Uptrend" if ma20 > ma50 else "Downtrend"
@@ -342,7 +445,8 @@ def predict(symbol: str = Query("AAPL")):
     best_model = max([
         ("Decision Tree", dt_prob),
         ("Random Forest", rf_prob),
-        ("Logistic", lr_prob)
+        ("Logistic", lr_prob),
+        ("XGBoost", xgb_prob)  
     ], key=lambda x: x[1])[0]
 
     return {
@@ -352,27 +456,39 @@ def predict(symbol: str = Query("AAPL")):
         "price": round(price, 2),
         "prediction": prediction,
         "confidence": confidence,
+        "confidence_breakdown": {
+        "ml_confidence": ml_confidence,
+        "technical_score": technical_score,
+        "agreement": agreement
+        },
         "signals": signals,
         "trade_plan": {
             "entry": entry,
             "stop_loss": stop_loss,
             "target": target,
-            "risk_reward": rr
+            "risk_reward": rr,
+         # ✅ NEW
+            "position_size": position_size,
+            "capital_used": capital_used,
+            "risk_per_trade_pct": 2
         },
         "ai_analysis": ai_analysis,
         "models": {
             "decision_tree": "BUY" if dt_pred == 1 else "SELL",
             "random_forest": "BUY" if rf_pred == 1 else "SELL",
-            "logistic": "BUY" if lr_pred == 1 else "SELL"
+            "logistic": "BUY" if lr_pred == 1 else "SELL",
+            "xgboost": "BUY" if xgb_pred == 1 else "SELL"  
         },
         "votes": int(votes),
         "score": int(score),
+        "explainability": shap_sorted
     }
 # =========================
 # TOP OPPORTUNITY
 # =========================
 @app.get("/top-opportunity")
 def top_opportunity():
+    capital = 10000  # total portfolio capital
     symbols = [
         # US
         "AAPL","TSLA","MSFT","GOOGL","AMZN","META","NVDA","AMD","NFLX","INTC",
@@ -403,8 +519,34 @@ def top_opportunity():
     # ✅ SORT ALL STOCKS
     results = sorted(results, key=lambda x: x["confidence"], reverse=True)
 
-    # ✅ RETURN TOP 3
-    return results[:3]
+    top_stocks = results[:5]
+
+    # ✅ TOTAL CONFIDENCE
+    total_conf = sum([s["confidence"] for s in top_stocks])
+
+    portfolio = []
+
+    for stock in top_stocks:
+        if total_conf > 0:
+            weight = stock["confidence"] / total_conf
+        else:
+            weight = 0
+
+        allocation = round(capital * weight, 2)
+
+        portfolio.append({
+        "symbol": stock["symbol"],
+        "prediction": stock["prediction"],
+        "confidence": stock["confidence"],
+        "weight": round(weight, 3),
+        "capital_allocated": allocation
+        })
+
+    
+    return {
+        "total_capital": capital,
+        "portfolio": portfolio
+    }
 
 @app.get("/backtest")
 def backtest(symbol: str = "AAPL"):
@@ -427,14 +569,23 @@ def backtest(symbol: str = "AAPL"):
     for i in range(50, len(df) - 1):
         row = df.iloc[i].copy()
 
-        features = row[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
-
+        features_df = pd.DataFrame([row[["RSI", "MA20", "MA50", "momentum", "volatility"]]])
+        features = scaler.transform(features_df)
         dt_pred = dt_model.predict(features)[0]
         rf_pred = rf_model.predict(features)[0]
         lr_pred = lr_model.predict(features)[0]
+        xgb_pred = xgb_model.predict(features)[0]  # ✅ FIXED
 
-        votes = dt_pred + rf_pred + lr_pred
-        prediction = 1 if votes >= 2 else 0
+    # ✅ WEIGHTED ML SCORE
+        score_ml = (
+        dt_pred * model_weights["dt"] +
+        rf_pred * model_weights["rf"] +
+        lr_pred * model_weights["lr"] +
+        xgb_pred * model_weights["xgb"]
+    )
+
+    # ✅ FINAL ML PREDICTION
+        prediction = 1 if score_ml >= 0.5 else 0
 
         next_price = float(df.iloc[i + 1]["Close"])
         current_price = float(row["Close"])
@@ -448,6 +599,7 @@ def backtest(symbol: str = "AAPL"):
             losses += 1
 
         total += 1
+
 
     accuracy = round((correct / total) * 100, 2) if total else 0
 
@@ -495,8 +647,8 @@ def simulate_profit(symbol: str = "AAPL"):
 
     for i in range(50, len(df) - 1):
         row = df.iloc[i]
-        features = row[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
-
+        features_df = pd.DataFrame([row[["RSI", "MA20", "MA50", "momentum", "volatility"]]])
+        features = scaler.transform(features_df)
         pred = rf_model.predict(features)[0]
 
         next_price = float(df.iloc[i + 1]["Close"])
@@ -537,8 +689,8 @@ def model_stats(symbol: str = "AAPL"):
     for i in range(50, len(df) - 1):
         row = df.iloc[i].copy()
 
-        features = row[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
-
+        features_df = pd.DataFrame([row[["RSI", "MA20", "MA50", "momentum", "volatility"]]])
+        features = scaler.transform(features_df)
         dt = dt_model.predict(features)[0]
         rf = rf_model.predict(features)[0]
         lr = lr_model.predict(features)[0]
@@ -553,12 +705,293 @@ def model_stats(symbol: str = "AAPL"):
         rf_preds.append(rf)
         lr_preds.append(lr)
 
-    return {
-        "decision_tree_accuracy": round(accuracy_score(y_true, dt_preds) * 100, 2),
-        "random_forest_accuracy": round(accuracy_score(y_true, rf_preds) * 100, 2),
-        "logistic_accuracy": round(accuracy_score(y_true, lr_preds) * 100, 2),
+    global model_weights
 
-        "decision_tree_cm": confusion_matrix(y_true, dt_preds).tolist(),
-        "random_forest_cm": confusion_matrix(y_true, rf_preds).tolist(),
-        "logistic_cm": confusion_matrix(y_true, lr_preds).tolist()
+    dt_acc = accuracy_score(y_true, dt_preds)
+    rf_acc = accuracy_score(y_true, rf_preds)
+    lr_acc = accuracy_score(y_true, lr_preds)
+
+# ✅ ADD XGB
+    xgb_preds = []
+    for i in range(50, len(df) - 1):
+        row = df.iloc[i]
+        features = row[["RSI", "MA20", "MA50", "momentum", "volatility"]].values.reshape(1, -1)
+        xgb = xgb_model.predict(features)[0]
+        xgb_preds.append(xgb)
+
+    xgb_acc = accuracy_score(y_true, xgb_preds)
+
+    # ✅ NORMALIZE → WEIGHTS
+    total = dt_acc + rf_acc + lr_acc + xgb_acc
+
+    model_weights = {
+        "dt": dt_acc / total,
+        "rf": rf_acc / total,
+        "lr": lr_acc / total,
+        "xgb": xgb_acc / total
     }
+
+    return {
+    "decision_tree_accuracy": round(dt_acc * 100, 2),
+    "random_forest_accuracy": round(rf_acc * 100, 2),
+    "logistic_accuracy": round(lr_acc * 100, 2),
+    "xgboost_accuracy": round(xgb_acc * 100, 2),   # ✅ ADD
+
+    "weights": model_weights,  # ✅ IMPORTANT
+
+    "decision_tree_cm": confusion_matrix(y_true, dt_preds).tolist(),
+    "random_forest_cm": confusion_matrix(y_true, rf_preds).tolist(),
+    "logistic_cm": confusion_matrix(y_true, lr_preds).tolist()
+    }
+
+def update_model_performance(symbol, last_preds, next_price):
+    global model_performance, model_weights
+
+    actual = 1 if next_price > last_preds["price"] else 0
+
+    for model in ["dt", "rf", "lr", "xgb"]:
+        pred = last_preds[model]
+
+        if pred == actual:
+            model_performance[model].append(1)
+        else:
+            model_performance[model].append(0)
+
+        # keep only last 50 trades
+        model_performance[model] = model_performance[model][-50:]
+
+    # ✅ UPDATE WEIGHTS
+    scores = {
+        m: sum(model_performance[m]) / len(model_performance[m]) if model_performance[m] else 0.25
+        for m in model_performance
+    }
+
+    total = sum(scores.values())
+
+    if total > 0:
+        model_weights = {
+            m: scores[m] / total for m in scores
+        }
+
+@app.get("/portfolio-backtest")
+def portfolio_backtest(mode: str = "simple"):
+
+    symbols = [
+        "AAPL","TSLA","MSFT","GOOGL","AMZN",
+        "RELIANCE.NS","TCS.NS","INFY.NS"
+    ]
+
+    initial_capital = 10000
+    capital = initial_capital
+    history = []
+    # ✅ BENCHMARK TRACKING
+    bh_capital = initial_capital   # Buy & Hold
+    random_capital = initial_capital
+
+    import random
+
+    # =========================
+    # SIMPLE BACKTEST (A)
+    # =========================
+    if mode == "simple":
+
+        for s in symbols:
+            try:
+                df = get_stock_data(s)
+                df = prepare_features(df)
+
+                if len(df) < 60:
+                    continue
+
+                row = df.iloc[-2]
+
+            # ✅ FEATURE PIPELINE (CORRECT)
+                features_df = pd.DataFrame([row[["RSI", "MA20", "MA50", "momentum", "volatility"]]])
+                features = scaler.transform(features_df)
+
+            # ✅ MODEL PREDICTIONS
+                dt_pred = dt_model.predict(features)[0]
+                rf_pred = rf_model.predict(features)[0]
+                lr_pred = lr_model.predict(features)[0]
+                xgb_pred = xgb_model.predict(features)[0]
+
+            # ✅ WEIGHTED SCORE
+                score_ml = (
+                dt_pred * model_weights["dt"] +
+                rf_pred * model_weights["rf"] +
+                lr_pred * model_weights["lr"] +
+                xgb_pred * model_weights["xgb"]
+                )
+
+            # ✅ FINAL DECISION (NO HOLD)
+                prediction = 1 if score_ml >= 0.5 else 0
+
+                current_price = float(df.iloc[-2]["Close"])
+                next_price = float(df.iloc[-1]["Close"])
+                # 🔵 BUY & HOLD
+                bh_change = (next_price - current_price) / current_price
+                bh_capital += bh_capital * bh_change
+
+                # 🔴 RANDOM STRATEGY
+                import random
+                rand_pred = random.choice([0, 1])
+
+                if rand_pred == 1:
+                    rand_change = (next_price - current_price) / current_price
+                else:
+                    rand_change = (current_price - next_price) / current_price
+
+                random_capital += random_capital * rand_change
+
+            # ✅ PNL CALCULATION
+                if prediction == 1:
+                    change = (next_price - current_price) / current_price
+                else:
+                    change = (current_price - next_price) / current_price
+
+                allocation = capital * 0.2
+
+                pnl = allocation * change
+                capital += pnl
+
+                history.append(pnl)
+
+            except:
+                continue
+
+    # =========================
+    # ROLLING BACKTEST (B)
+    # =========================
+
+    elif mode == "rolling":
+
+    # ✅ PRELOAD DATA (FIXES API ERROR)
+        data_cache = {}
+
+        for s in symbols:
+            try:
+                df = get_stock_data(s)
+                df = prepare_features(df)
+                data_cache[s] = df
+            except:
+                continue
+
+        for step in range(50, 100):
+
+            step_results = []
+
+            for s in symbols:
+                try:
+                    df = data_cache.get(s)
+
+                    if df is None or len(df) < step + 2:
+                        continue
+
+                    row = df.iloc[step]
+
+                    features_df = pd.DataFrame([row[["RSI", "MA20", "MA50", "momentum", "volatility"]]])
+                    features = scaler.transform(features_df)
+
+                    dt_pred = dt_model.predict(features)[0]
+                    rf_pred = rf_model.predict(features)[0]
+                    lr_pred = lr_model.predict(features)[0]
+                    xgb_pred = xgb_model.predict(features)[0]
+
+                    score_ml = (
+                    dt_pred * model_weights["dt"] +
+                    rf_pred * model_weights["rf"] +
+                    lr_pred * model_weights["lr"] +
+                    xgb_pred * model_weights["xgb"]
+                    )
+
+                    prediction = 1 if score_ml >= 0.5 else 0
+
+                    current_price = float(df.iloc[step][["Close"]].values[0])
+                    next_price = float(df.iloc[step + 1][["Close"]].values[0])
+
+                    change = (
+                    (next_price - current_price) / current_price
+                    if prediction == 1
+                    else (current_price - next_price) / current_price
+                    )
+
+                    step_results.append(change)
+
+                except:
+                    continue
+
+            if step_results:
+                avg_change = sum(step_results) / len(step_results)
+
+
+                # 🔵 BUY & HOLD (avg)
+                # 🔵 TRUE BUY & HOLD (market movement only)
+            bh_changes = []
+
+            for s in symbols:
+                df = data_cache.get(s)
+                if df is None or len(df) < step + 2:
+                    continue
+
+                price_now = float(df.iloc[step]["Close"])
+                price_next = float(df.iloc[step + 1]["Close"])
+
+                bh_changes.append((price_next - price_now) / price_now)
+
+                if bh_changes:
+                    bh_avg = sum(bh_changes) / len(bh_changes)
+                    bh_capital += bh_capital * bh_avg
+
+                # 🔴 RANDOM STRATEGY
+                import random
+                rand_change = random.uniform(-0.02, 0.02)  # random fluctuation
+                random_capital += random_capital * rand_change
+                pnl = capital * avg_change
+                capital += pnl
+
+                history.append(pnl)
+
+    # =========================
+    # METRICS
+    # =========================
+    total_return = ((capital - initial_capital) / initial_capital) * 100
+
+    wins = len([h for h in history if h > 0])
+    losses = len([h for h in history if h < 0])
+    total = len(history)
+
+    win_rate = (wins / total * 100) if total else 0
+
+    # Max Drawdown
+    peak = initial_capital
+    drawdown = 0
+
+    temp_cap = initial_capital
+    for h in history:
+        temp_cap += h
+        peak = max(peak, temp_cap)
+        dd = (temp_cap - peak) / peak
+        drawdown = min(drawdown, dd)
+
+    return {
+    "mode": mode,
+
+    "your_strategy": {
+        "final_capital": round(capital, 2),
+        "return_pct": round(((capital - initial_capital) / initial_capital) * 100, 2)
+    },
+
+    "buy_and_hold": {
+        "final_capital": round(bh_capital, 2),
+        "return_pct": round(((bh_capital - initial_capital) / initial_capital) * 100, 2)
+    },
+
+    "random_strategy": {
+        "final_capital": round(random_capital, 2),
+        "return_pct": round(((random_capital - initial_capital) / initial_capital) * 100, 2)
+    },
+
+    "win_rate": round(win_rate, 2),
+    "max_drawdown": round(drawdown * 100, 2),
+    "trades": total
+}

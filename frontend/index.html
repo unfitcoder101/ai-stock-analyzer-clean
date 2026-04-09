@@ -392,13 +392,6 @@
     </button>
     <div id="modelStats" class="text-sm text-white"></div>
 
-    <!-- PROFIT -->
-    <button onclick="runProfitSim()"
-        class="w-full px-4 py-2 bg-green-500/20 border border-green-400 rounded-lg hover:bg-green-500/40">
-        Profit Simulation
-    </button>
-    <div id="profitResult" class="text-sm text-white"></div>
-
 </div>
                    
                     <!-- Market Structure -->
@@ -507,7 +500,7 @@ class="w-full mb-3 px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-l
             document.getElementById("rr").innerText = "...";
 
             try {
-                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/predict?symbol=${symbol}`);
+                const res = await fetch(`http://127.0.0.1:8000/predict?symbol=${symbol}`);
                 const data = await res.json();
 
                 if (data.error) {
@@ -587,7 +580,7 @@ class="w-full mb-3 px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-l
                 return;
             }
 
-            const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/search?query=${query}`);
+            const res = await fetch(`http://127.0.0.1:8000/search?query=${query}`);
             const data = await res.json();
 
             const dropdown = document.getElementById("dropdown");
@@ -633,7 +626,7 @@ class="w-full mb-3 px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-l
 
         async function loadBestStock() {
             try {
-                const res = await fetch("https://ai-stock-backend-4uuw.onrender.com/top-opportunity");
+                const res = await fetch("http://127.0.0.1:8000/top-opportunity");
                 const data = await res.json();
 
                 if (!data || data.error || !data.symbol) {
@@ -651,7 +644,7 @@ class="w-full mb-3 px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-l
         async function loadModelStats() {
             document.getElementById("modelStats").innerText = "Analyzing models...";
             try {
-                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/model-stats?symbol=${currentSymbol}`);
+                const res = await fetch(`http://127.0.0.1:8000/model-stats?symbol=${currentSymbol}`);
                 const data = await res.json();
 
                 document.getElementById("modelStats").innerHTML = `
@@ -659,19 +652,7 @@ class="w-full mb-3 px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-l
         <div>DT Accuracy: ${data.decision_tree_accuracy}%</div>
         <div>RF Accuracy: ${data.random_forest_accuracy}%</div>
         <div>LR Accuracy: ${data.logistic_accuracy}%</div>
-
-        <br/>
-
-        <div class="font-bold">Decision Tree CM:</div>
-<pre style="font-family: monospace;">${formatMatrix(data.decision_tree_cm)}</pre>
-
-<div class="font-bold">Random Forest CM:</div>
-<pre style="font-family: monospace;">${formatMatrix(data.random_forest_cm)}</pre>
-
-<div class="font-bold">Logistic CM:</div>
-<pre style="font-family: monospace;">${formatMatrix(data.logistic_cm)}</pre>
-    </div>
-`;
+    </div>`;
             } catch {
                 document.getElementById("backtestResult").innerText = "Error running backtest";
                 document.getElementById("modelStats").innerText = "Error loading model stats";
@@ -688,7 +669,7 @@ class="w-full mb-3 px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-l
         async function runBacktest() {
             document.getElementById("backtestResult").innerText = "Running backtest...";
             try {
-                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/backtest?symbol=${currentSymbol}`);
+                const res = await fetch(`http://127.0.0.1:8000/backtest?symbol=${currentSymbol}`);
                 const data = await res.json();
                 // ✅ STEP 5: currency detection
 const isIndian = currentSymbol.includes(".NS");
@@ -745,22 +726,7 @@ function removeFromWatchlist(symbol) {
 
 
 
-        async function runProfitSim() {
-            try {
-                const res = await fetch(`https://ai-stock-backend-4uuw.onrender.com/simulate-profit?symbol=${currentSymbol}`);
-                const data = await res.json();
-                // ✅ STEP 5: currency detection
-const isIndian = currentSymbol.includes(".NS");
-const currency = isIndian ? "₹" : "$";
-
-                document.getElementById("profitResult").innerHTML = `
-            Profit: <span style="color:${data.profit >= 0 ? 'lime' : 'red'}">${currency}${data.profit}</span><br>
-Final Capital: <span style="color:#00ffcc">${currency}${data.final_capital}</span>
-        `;
-            } catch {
-                alert("Profit simulation failed");
-            }
-        }
+       
 
         function showError(msg) {
             const box = document.getElementById("errorBox");
@@ -772,7 +738,7 @@ Final Capital: <span style="color:#00ffcc">${currency}${data.final_capital}</spa
 
         async function loadTopStocks() {
     try {
-        const res = await fetch("https://ai-stock-backend-4uuw.onrender.com/top-opportunity");
+        const res = await fetch("http://127.0.0.1:8000/top-opportunity");
         const data = await res.json();
 
         const container = document.getElementById("topStocks");
