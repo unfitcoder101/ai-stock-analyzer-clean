@@ -1,4 +1,6 @@
 import joblib
+import numpy as np
+import random
 import os
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -225,6 +227,19 @@ def search_stock(query: str):
 
 @app.get("/predict")
 def predict(symbol: str = Query("AAPL")):
+    
+    import requests
+
+# ✅ GET SENTIMENT (LOCAL ONLY)
+    try:
+        res = requests.get(
+        f"http://127.0.0.1:8001/sentiment?symbol={symbol}",
+        timeout=2
+        )
+        sentiment_score = res.json().get("score", 0)
+        sentiment_score_norm = round((sentiment_score + 1) * 50, 2)
+    except:
+        sentiment_score = 0
 
     df = get_stock_data(symbol)
     # ✅ STEP 3 — FIX MULTI-INDEX (PASTE HERE)
@@ -348,7 +363,13 @@ def predict(symbol: str = Query("AAPL")):
     # ✅ NORMALIZE TECH SCORE (VERY IMPORTANT)
     technical_score = round(((score + 4) / 8) * 100, 2)
     # ✅ FINAL COMBINED CONFIDENCE
-    confidence = round((ml_confidence + technical_score) / 2, 2)
+    # ✅ FINAL MULTI-MODAL CONFIDENCE
+    confidence = round(
+        0.5 * ml_confidence +
+        0.3 * technical_score +
+        0.2 * sentiment_score_norm,
+        2
+    )
 
     
     # ===== FINAL DECISION =====
@@ -357,9 +378,10 @@ def predict(symbol: str = Query("AAPL")):
 
    # ✅ FINAL DECISION (HYBRID FIXED)
 
-    if score_ml >= 0.5 and score > 0:
+    # ✅ FINAL DECISION (USING CONFIDENCE)
+    if confidence > 60:
         prediction = "BUY"
-    elif score_ml < 0.5 and score < 0:
+    elif confidence < 40:
         prediction = "SELL"
     else:
         prediction = "HOLD"
@@ -473,6 +495,10 @@ def predict(symbol: str = Query("AAPL")):
             "risk_per_trade_pct": 2
         },
         "ai_analysis": ai_analysis,
+        "sentiment": {
+        "score_raw": sentiment_score,
+        "score_normalized": sentiment_score_norm
+        },
         "models": {
             "decision_tree": "BUY" if dt_pred == 1 else "SELL",
             "random_forest": "BUY" if rf_pred == 1 else "SELL",
@@ -788,8 +814,6 @@ def portfolio_backtest(mode: str = "simple"):
     bh_capital = initial_capital   # Buy & Hold
     random_capital = initial_capital
 
-    import random
-
     # =========================
     # SIMPLE BACKTEST (A)
     # =========================
@@ -833,25 +857,27 @@ def portfolio_backtest(mode: str = "simple"):
                 bh_capital += bh_capital * bh_change
 
                 # 🔴 RANDOM STRATEGY
-                import random
-                rand_pred = random.choice([0, 1])
-
-                if rand_pred == 1:
-                    rand_change = (next_price - current_price) / current_price
-                else:
-                    rand_change = (current_price - next_price) / current_price
-
+                rand_pred = random.choice([0,1])
+                rand_change = (
+                    (next_price - current_price) / current_price
+                    if rand_pred == 1
+                    else (current_price - next_price) / current_price
+                )
                 random_capital += random_capital * rand_change
 
             # ✅ PNL CALCULATION
+                slippage = 0.001  # 0.1%
+
                 if prediction == 1:
-                    change = (next_price - current_price) / current_price
+                    entry = current_price * (1 + slippage)
+                    exit = next_price * (1 - slippage)
+                    change = (exit - entry) / entry
                 else:
-                    change = (current_price - next_price) / current_price
+                    entry = current_price * (1 - slippage)
+                    exit= next_price * (1 + slippage)
+                    change = (entry- exit) / entry
 
-                allocation = capital * 0.2
-
-                pnl = allocation * change
+                pnl = capital* 0.2 * change
                 capital += pnl
 
                 history.append(pnl)
@@ -859,13 +885,14 @@ def portfolio_backtest(mode: str = "simple"):
             except:
                 continue
 
+
     # =========================
     # ROLLING BACKTEST (B)
     # =========================
 
+    # ✅ PRELOAD DATA (FIXES API ERROR)
     elif mode == "rolling":
 
-    # ✅ PRELOAD DATA (FIXES API ERROR)
         data_cache = {}
 
         for s in symbols:
@@ -879,6 +906,7 @@ def portfolio_backtest(mode: str = "simple"):
         for step in range(50, 100):
 
             step_results = []
+            bh_changes = []
 
             for s in symbols:
                 try:
@@ -906,50 +934,38 @@ def portfolio_backtest(mode: str = "simple"):
 
                     prediction = 1 if score_ml >= 0.5 else 0
 
-                    current_price = float(df.iloc[step][["Close"]].values[0])
-                    next_price = float(df.iloc[step + 1][["Close"]].values[0])
-
+                    price_now = float(df.iloc[step]["Close"])
+                    price_next = float(df.iloc[step+1]["Close"])
+                    
                     change = (
-                    (next_price - current_price) / current_price
+                    (price_next - price_now) / price_now
                     if prediction == 1
-                    else (current_price - next_price) / current_price
+                    else (price_now - price_next) / price_now
                     )
 
                     step_results.append(change)
 
+                    bh_changes.append((price_next - price_now) / price_now)
+                    
                 except:
                     continue
 
             if step_results:
                 avg_change = sum(step_results) / len(step_results)
-
+                capital += capital * avg_change
+                history.append(capital * avg_change)
 
                 # 🔵 BUY & HOLD (avg)
                 # 🔵 TRUE BUY & HOLD (market movement only)
-            bh_changes = []
+            if bh_changes:
+                bh_avg = sum(bh_changes) / len(bh_changes)
+                bh_capital += bh_capital * bh_avg
 
-            for s in symbols:
-                df = data_cache.get(s)
-                if df is None or len(df) < step + 2:
-                    continue
+            # random
+            rand_change = random.uniform(-0.02, 0.02)
+            random_capital += random_capital * rand_change
 
-                price_now = float(df.iloc[step]["Close"])
-                price_next = float(df.iloc[step + 1]["Close"])
-
-                bh_changes.append((price_next - price_now) / price_now)
-
-                if bh_changes:
-                    bh_avg = sum(bh_changes) / len(bh_changes)
-                    bh_capital += bh_capital * bh_avg
-
-                # 🔴 RANDOM STRATEGY
-                import random
-                rand_change = random.uniform(-0.02, 0.02)  # random fluctuation
-                random_capital += random_capital * rand_change
-                pnl = capital * avg_change
-                capital += pnl
-
-                history.append(pnl)
+           
 
     # =========================
     # METRICS
@@ -973,24 +989,27 @@ def portfolio_backtest(mode: str = "simple"):
         dd = (temp_cap - peak) / peak
         drawdown = min(drawdown, dd)
 
+    if history:
+            returns = np.array(history)
+            sharpe = round(np.mean(returns) / np.std(returns), 2) if np.std(returns) != 0 else 0
+    else:
+            sharpe = 0
+
     return {
     "mode": mode,
-
     "your_strategy": {
         "final_capital": round(capital, 2),
         "return_pct": round(((capital - initial_capital) / initial_capital) * 100, 2)
     },
-
     "buy_and_hold": {
         "final_capital": round(bh_capital, 2),
         "return_pct": round(((bh_capital - initial_capital) / initial_capital) * 100, 2)
     },
-
     "random_strategy": {
         "final_capital": round(random_capital, 2),
         "return_pct": round(((random_capital - initial_capital) / initial_capital) * 100, 2)
     },
-
+    "sharpe_ratio": sharpe,
     "win_rate": round(win_rate, 2),
     "max_drawdown": round(drawdown * 100, 2),
     "trades": total
