@@ -1,7 +1,10 @@
 import joblib
 import numpy as np
 import random
+import pandas as pd
+import csv
 import os
+from datetime import datetime
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from data import get_stock_data, get_stock_info
@@ -13,7 +16,6 @@ from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier 
 import shap
 
-import pandas as pd
 
 print("🔥 CLEAN MAIN RUNNING")
 
@@ -48,9 +50,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+def log_experiment(version, change, results):
+    file_exists = os.path.isfile("experiments.csv")
 
+    with open("experiments.csv", mode="a", newline="") as file:
+        writer = csv.writer(file)
 
+        if not file_exists:
+            writer.writerow([
+                "timestamp",
+                "version",
+                "change",
+                "return_pct",
+                "sharpe",
+                "win_rate",
+                "drawdown"
+            ])
 
+        writer.writerow([
+            datetime.now(),
+            version,
+            change,
+            results.get("return_pct"),
+            results.get("sharpe_ratio"),
+            results.get("win_rate"),
+            results.get("max_drawdown")
+        ])
 
 def prepare_features(df):
     df = df.copy()
@@ -995,6 +1020,17 @@ def portfolio_backtest(mode: str = "simple"):
     else:
             sharpe = 0
 
+    log_experiment(
+    version="v1_baseline",
+    change="ML + technical + sentiment (current system)",
+    results={
+        "return_pct": round((capital - 10000) / 10000 * 100, 2),
+        "sharpe_ratio": sharpe,
+        "win_rate": win_rate,
+        "max_drawdown": drawdown
+    }
+    )
+
     return {
     "mode": mode,
     "your_strategy": {
@@ -1012,5 +1048,7 @@ def portfolio_backtest(mode: str = "simple"):
     "sharpe_ratio": sharpe,
     "win_rate": round(win_rate, 2),
     "max_drawdown": round(drawdown * 100, 2),
-    "trades": total
+    "trades": total, 
+    # ✅ LOG EXPERIMENT
+    
 }
