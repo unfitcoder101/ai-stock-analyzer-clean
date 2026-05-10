@@ -747,6 +747,10 @@ def top_opportunity():
 def backtest(symbol: str = "AAPL"):
     df = get_stock_data(symbol)
 
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df = df.loc[:, ~df.columns.duplicated()]
+
     if df.empty:
         return {"error": "Invalid symbol"}
 
