@@ -1,8 +1,9 @@
+import os 
 from groq import Groq
 
 def analyze_stock_ai(symbol, trend, rsi, prediction, confidence):
     try:
-        client = Groq(api_key="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")
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
