@@ -9,8 +9,14 @@ def get_stock_data(symbol):
 
     try:
         df = yf.download(symbol, period="1y", progress=False)
+
         if df is None or df.empty:
             return pd.DataFrame()
+        
+        if "Close" not in df.columns:
+            return pd.DataFrame()   
+        
+        
         df.dropna(inplace=True)
         return df
     except:

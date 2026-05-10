@@ -2,9 +2,10 @@ import joblib
 import numpy as np
 import random
 import pandas as pd
+import requests
 import csv
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from data import get_stock_data, get_stock_info
@@ -26,13 +27,19 @@ xgb_model = None
 scaler = None
 explainer = None   # ✅ ADD
 
+
+
 model_weights = {
     "dt": 0.25,
     "rf": 0.25,
     "lr": 0.25,
     "xgb": 0.25
 }
+last_trade_time = None
 
+paper_trades = []
+paper_balance = 10000
+open_positions = []
 # ✅ ADD MEMORY
 model_performance = {
     "dt": [],
@@ -78,6 +85,12 @@ def log_experiment(version, change, results):
         ])
 
 def prepare_features(df):
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    if "Close" not in df.columns:
+        return pd.DataFrame()
+    
     df = df.copy()
 
     df["MA20"] = df["Close"].rolling(20).mean()
@@ -133,8 +146,15 @@ def train_model():
 
         temp_df = prepare_features(temp_df)
 
+        if temp_df is None or temp_df.empty:
+            continue
+
         if not temp_df.empty:
             all_data.append(temp_df)
+
+    if not all_data:
+        print("🔥 No valid data — skipping training")
+        return
 
     df = pd.concat(all_data, ignore_index=True)
     # ✅ ADD HERE (correct place)
@@ -255,6 +275,9 @@ def predict(symbol: str = Query("AAPL")):
     
     import requests
 
+    global last_trade_time
+    global paper_trades, open_positions
+
 # ✅ GET SENTIMENT (LOCAL ONLY)
     try:
         res = requests.get(
@@ -263,8 +286,10 @@ def predict(symbol: str = Query("AAPL")):
         )
         sentiment_score = res.json().get("score", 0)
         sentiment_score_norm = round((sentiment_score + 1) * 50, 2)
+
     except:
         sentiment_score = 0
+        sentiment_score_norm = 50   # ✅ VERY IMPORTANT FIX
 
     df = get_stock_data(symbol)
     # ✅ STEP 3 — FIX MULTI-INDEX (PASTE HERE)
@@ -286,6 +311,49 @@ def predict(symbol: str = Query("AAPL")):
         return {"error": "Not enough data"}
 
     latest = df.iloc[-1]
+    prev = df.iloc[-2]
+    
+    price = float(latest["Close"])
+    
+    rsi = float(latest["RSI"])
+    # =========================
+    # BREAKOUT LEVELS
+    # =========================
+    recent_high = float(df["High"].rolling(20).max().iloc[-2])
+    recent_low = float(df["Low"].rolling(20).min().iloc[-2])
+
+    is_breakout_up = price > recent_high
+    is_breakout_down = price < recent_low
+
+    # =========================
+# FAKE BREAKOUT FILTER
+# =========================
+    valid_breakout_up = (
+    is_breakout_up and
+    price > prev["High"] and
+    rsi > 50
+    )
+
+    valid_breakout_down = (
+    is_breakout_down and
+    price < prev["Low"] and
+    rsi < 50
+    )
+
+    # =========================
+# REGIME DETECTION
+# =========================
+    ma20 = float(latest["MA20"])
+    ma50 = float(latest["MA50"])
+    rsi = float(latest["RSI"])
+    volatility = float(latest["volatility"])
+
+    if ma20 > ma50 and volatility > 0.01:
+        regime = "TREND_UP"
+    elif ma20 < ma50 and volatility > 0.01:
+        regime = "TREND_DOWN"
+    else:
+        regime = "RANGE"
 
     # ===== PRICE =====
 
@@ -341,10 +409,6 @@ def predict(symbol: str = Query("AAPL")):
 # ✅ AGREEMENT LEVEL
     agreement = f"{votes}/4 models bullish"
 
-    if score_ml >= 0.5:
-        prediction = "BUY"
-    else:
-        prediction = "SELL"
 
     ml_confidence = round((
     dt_prob * model_weights["dt"] +
@@ -396,20 +460,54 @@ def predict(symbol: str = Query("AAPL")):
         2
     )
 
-    
-    # ===== FINAL DECISION =====
-    # ===== FINAL DECISION (HYBRID) =====
-    # 🔥 FINAL DECISION (FIXED)
+    # =========================
+# FINAL DECISION ENGINE (BREAKOUT + REGIME)
+# =========================
 
-   # ✅ FINAL DECISION (HYBRID FIXED)
+    prediction = "HOLD"
 
-    # ✅ FINAL DECISION (USING CONFIDENCE)
-    if confidence > 60:
-        prediction = "BUY"
-    elif confidence < 40:
-        prediction = "SELL"
-    else:
+# 🔥 TREND + BREAKOUT (HIGH QUALITY TRADES)
+    if regime == "TREND_UP":
+        if valid_breakout_up and score_ml >= 0.6:
+            prediction = "BUY"
+
+    elif regime == "TREND_DOWN":
+        if valid_breakout_down and score_ml <= 0.4:
+            prediction = "SELL"
+
+# 🔁 RANGE (MEAN REVERSION)
+    elif regime == "RANGE":
+        if rsi < 30:
+            prediction = "BUY"
+        elif rsi > 70:
+            prediction = "SELL"
+
+# 🔒 CONFIDENCE FILTER
+    if confidence < 55:
         prediction = "HOLD"
+
+# =========================
+# VOLATILITY FILTER (ADD HERE)
+# =========================
+    if volatility < 0.005:
+        prediction = "HOLD"
+
+# 🧠 SENTIMENT FILTER
+    if prediction == "BUY" and sentiment_score < -0.2:
+        prediction = "HOLD"
+
+    if prediction == "SELL" and sentiment_score > 0.2:
+        prediction = "HOLD" 
+
+    # =========================
+    # TRADE COOLDOWN (ADD HERE)
+    # =========================
+    global last_trade_time
+
+    if last_trade_time:
+        if datetime.now() - last_trade_time < timedelta(minutes=30):
+            prediction = "HOLD"
+ 
 
     # ===== SUPPORT / RESISTANCE =====
     support = float(df["Low"].rolling(20).min().iloc[-1])
@@ -419,16 +517,28 @@ def predict(symbol: str = Query("AAPL")):
     capital = 10000   # you can make this dynamic later
     risk_per_trade = 0.02  # 2% risk per trade
 
+    # =========================
+# ATR CALCULATION
+# =========================
+    df["high_low"] = df["High"] - df["Low"]
+    df["high_close"] = abs(df["High"] - df["Close"].shift())
+    df["low_close"] = abs(df["Low"] - df["Close"].shift())
+
+    df["tr"] = df[["high_low", "high_close", "low_close"]].max(axis=1)
+    df["ATR"] = df["tr"].rolling(14).mean()
+
+    atr = float(df["ATR"].iloc[-1])
+
    # ===== TRADE PLAN (FIXED CLEAN LOGIC) =====
     if prediction == "BUY":
-        entry = round(price, 2)
-        stop_loss = round(min(support, price * 0.98), 2)
-        target = round(max(resistance, price * 1.02), 2)
+        entry = price
+        stop_loss = round(price - (1.5 * atr), 2)
+        target = round(price + (2 * atr), 2)
 
     elif prediction == "SELL":
-        entry = round(price, 2)
-        stop_loss = round(max(resistance, price * 1.02), 2)
-        target = round(min(support, price * 0.98), 2)
+        entry = price
+        stop_loss = round(price + (1.5 * atr), 2)
+        target = round(price - (2 * atr), 2)
     # ✅ POSITION SIZING
     if prediction != "HOLD":
         risk_per_unit = abs(entry - stop_loss)
@@ -446,6 +556,28 @@ def predict(symbol: str = Query("AAPL")):
         target = "-"
         position_size = 0
         capital_used = 0
+
+    # =========================
+# STORE PAPER TRADE
+# =========================
+    if prediction in ["BUY", "SELL"]:
+
+        last_trade_time = datetime.now()
+
+        trade = {
+            "time": str(datetime.now()),
+            "symbol": symbol,
+            "prediction": prediction,
+            "price": round(price, 2),
+            "confidence": confidence,
+            "regime": regime,
+            "target": target,
+            "stop_loss": stop_loss,
+            "position_size": position_size
+        }
+
+        paper_trades.append(trade)
+        open_positions.append(trade)
 
     # ===== AI =====
     trend = "Uptrend" if ma20 > ma50 else "Downtrend"
@@ -473,7 +605,7 @@ def predict(symbol: str = Query("AAPL")):
     round(rsi, 2),
     prediction,
     confidence
-)
+    )
 
     ai_analysis += "\n\nReasons:\n" + ", ".join(reason)
 
@@ -498,6 +630,7 @@ def predict(symbol: str = Query("AAPL")):
 
     return {
         "symbol": symbol,
+        "sentiment_score": sentiment_score,
         "best_model": best_model,
         "company": info.get("name", symbol),
         "price": round(price, 2),
@@ -524,6 +657,16 @@ def predict(symbol: str = Query("AAPL")):
         "score_raw": sentiment_score,
         "score_normalized": sentiment_score_norm
         },
+        "breakout": {
+            "recent_high": recent_high,
+            "recent_low": recent_low,
+            "is_breakout_up": is_breakout_up,
+            "is_breakout_down": is_breakout_down
+        },
+        "breakout_quality": {
+            "valid_up": valid_breakout_up,
+            "valid_down": valid_breakout_down
+        },
         "models": {
             "decision_tree": "BUY" if dt_pred == 1 else "SELL",
             "random_forest": "BUY" if rf_pred == 1 else "SELL",
@@ -531,6 +674,7 @@ def predict(symbol: str = Query("AAPL")):
             "xgboost": "BUY" if xgb_pred == 1 else "SELL"  
         },
         "votes": int(votes),
+        "regime": regime,
         "score": int(score),
         "explainability": shap_sorted
     }
@@ -873,7 +1017,12 @@ def portfolio_backtest(mode: str = "simple"):
                 )
 
             # ✅ FINAL DECISION (NO HOLD)
-                prediction = 1 if score_ml >= 0.5 else 0
+                if score_ml >= 0.55:
+                    prediction = 1
+                elif score_ml < 0.45:
+                    prediction = 0
+                else:
+                    continue
 
                 current_price = float(df.iloc[-2]["Close"])
                 next_price = float(df.iloc[-1]["Close"])
@@ -909,7 +1058,6 @@ def portfolio_backtest(mode: str = "simple"):
 
             except:
                 continue
-
 
     # =========================
     # ROLLING BACKTEST (B)
@@ -957,7 +1105,12 @@ def portfolio_backtest(mode: str = "simple"):
                     xgb_pred * model_weights["xgb"]
                     )
 
-                    prediction = 1 if score_ml >= 0.5 else 0
+                    if score_ml >= 0.6:
+                        prediction = 1
+                    elif score_ml <= 0.4:
+                        prediction = 0
+                    else:
+                        continue
 
                     price_now = float(df.iloc[step]["Close"])
                     price_next = float(df.iloc[step+1]["Close"])
@@ -1052,3 +1205,27 @@ def portfolio_backtest(mode: str = "simple"):
     # ✅ LOG EXPERIMENT
     
 }
+
+# =========================
+# PAPER TRADES
+# =========================
+@app.get("/paper-trades")
+def get_paper_trades():
+    return {
+        "total_trades": len(paper_trades),
+        "trades": paper_trades[-20:]
+    }
+
+# =========================
+# PAPER PORTFOLIO
+# =========================
+@app.get("/paper-portfolio")
+def paper_portfolio():
+
+    total_positions = len(open_positions)
+
+    return {
+        "paper_balance": round(paper_balance, 2),
+        "open_positions": total_positions,
+        "positions": open_positions[-10:]
+    }

@@ -1,17 +1,26 @@
+from groq import Groq
+
 def analyze_stock_ai(symbol, trend, rsi, prediction, confidence):
-    return f"""
-AI Analysis:
+    try:
+        client = Groq(api_key="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")
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{
+                "role": "user",
+                "content": f"""You are a sharp equity analyst. Give a 3-sentence analysis:
 
 Stock: {symbol}
 Trend: {trend}
 RSI: {rsi}
-
-Prediction: {prediction}
+Signal: {prediction}
 Confidence: {confidence}%
 
-Insight:
-This decision is based on trend + RSI + ML models.
+Be specific. Mention one risk. End with a clear action."""
+            }],
+            max_tokens=200
+        )
+        return response.choices[0].message.content
 
-Advice:
-Trade carefully and confirm with multiple signals.
-"""
+    except Exception as e:
+        return f"Analysis unavailable: {str(e)}"
