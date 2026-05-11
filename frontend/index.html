@@ -241,7 +241,7 @@
 </div>
 </nav>
 <!-- Main Content -->
-<main class="md:ml-64 pt-28 px-10 pb-12 min-h-screen">
+<main style="margin-left:256px; padding-top:80px; padding-left:40px; padding-right:40px; min-height:100vh;">
 <div class="max-w-7xl mx-auto space-y-10">
 <!-- Hero Section -->
 <section class="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -458,60 +458,179 @@
 </div>
 </div>
 <script>
-    // Event handler stubs for functional integration
-    function searchStock(value) {
-        console.log("Searching for:", value);
-        const dropdown = document.getElementById('dropdown');
-        if (value.length > 0) {
-            dropdown.classList.remove('hidden');
-            dropdown.innerHTML = `<div class="p-4 text-xs font-mono text-white/40">Searching DB for "${value.toUpperCase()}"...</div>`;
-        } else {
-            dropdown.classList.add('hidden');
-        }
-    }
 
-    function addToWatchlist() {
-        console.log("Adding current stock to watchlist...");
-        const sidebar = document.getElementById('watchlistSidebar');
-        const nav = document.getElementById('watchlistNav');
-        // Animation feedback
-        const btn = event.currentTarget;
-        btn.classList.add('text-primary');
-        setTimeout(() => btn.classList.remove('text-primary'), 1000);
-    }
+const API = 'https://stocksignal-backend-mcfs.onrender.com';
+let currentSymbol = 'AAPL';
+let watchlist = JSON.parse(localStorage.getItem('watchlist') || '["AAPL","TSLA"]');
 
-    function loadBestStock() {
-        console.log("Loading best stock of the day...");
-        const loading = document.getElementById('loading-layer');
-        loading.classList.remove('hidden');
-        setTimeout(() => loading.classList.add('hidden'), 800);
+async function fetchStock(symbol) {
+  currentSymbol = symbol;
+  document.getElementById('verdict').innerText = 'ANALYZING...';
+  document.getElementById('verdict').style.color = '#00f5ff';
+  document.getElementById('price').innerText = '...';
+  try {
+    const res = await fetch(`${API}/predict?symbol=${encodeURIComponent(symbol)}`);
+    const d = await res.json();
+    if (d.error) return;
+    const cur = symbol.includes('.NS') ? '₹' : '$';
+    document.getElementById('stockName').innerHTML = `${d.company} <span style="color:#00f5ff;font-size:1.2rem">(${d.symbol})</span>`;
+    document.getElementById('price').innerText = cur + d.price;
+    const verdict = document.getElementById('verdict');
+    verdict.innerText = d.prediction;
+    verdict.style.color = d.prediction==='BUY' ? '#00ff41' : d.prediction==='SELL' ? '#ff003c' : '#ffcc00';
+    document.getElementById('confidence').innerText = d.confidence + '%';
+    document.getElementById('confidenceBar').style.width = d.confidence + '%';
+    const regimeEl = document.getElementById('regime');
+    if (regimeEl) { regimeEl.innerText = d.regime || '-'; regimeEl.style.color = d.regime==='TREND_UP' ? '#00ff41' : d.regime==='TREND_DOWN' ? '#ff003c' : '#ffcc00'; }
+    const tp = d.trade_plan || {};
+    document.getElementById('entry').innerText    = (tp.entry    && tp.entry    !== '-') ? cur + Number(tp.entry).toFixed(2)     : 'HOLD';
+    document.getElementById('stopLoss').innerText = (tp.stop_loss && tp.stop_loss !== '-') ? cur + Number(tp.stop_loss).toFixed(2) : 'HOLD';
+    document.getElementById('target').innerText   = (tp.target   && tp.target   !== '-') ? cur + Number(tp.target).toFixed(2)    : 'HOLD';
+    document.getElementById('rr').innerText       = (tp.risk_reward && tp.risk_reward !== '-') ? '1:' + tp.risk_reward            : '-';   
+    const sigEl = document.getElementById('signals');
+    if (sigEl && d.signals) {
+      sigEl.innerHTML = d.signals.map(s => {
+        const color = s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? '#00ff41' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? '#ff003c' : '#ffcc00';
+        return `<li style="display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid rgba(255,255,255,0.05);border-radius:4px;margin-bottom:8px;border-left:3px solid ${color}">
+          <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.8)">${s}</span>
+          <span style="font-size:10px;font-family:monospace;font-weight:bold;color:${color}">${s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? 'BUY' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? 'SELL' : 'NEUTRAL'}</span>
+        </li>`;
+      }).join('');
     }
+    const aiEl = document.getElementById('aiAnalysis');
+    if (aiEl) aiEl.innerText = d.ai_analysis || 'No analysis available.';
+    const chartEl = document.getElementById('chart');
+    if (chartEl) chartEl.innerHTML = `<iframe src="https://s.tradingview.com/widgetembed/?symbol=${symbol}&interval=D&theme=dark&hide_side_toolbar=0&allow_symbol_change=1" width="100%" height="100%" frameborder="0" style="min-height:500px;display:block;"></iframe>`;
+    renderWatchlist();
+  } catch(e) {
+    document.getElementById('verdict').innerText = 'ERROR';
+    document.getElementById('verdict').style.color = '#ff003c';
+    console.error(e);
+  }
+}
 
-    function runBacktest() {
-        console.log("Running backtest protocol...");
-        const resultDiv = document.getElementById('backtestResult');
-        resultDiv.innerHTML = `<div class="p-3 bg-accent-green/10 border border-accent-green/20 rounded text-[10px] font-mono text-accent-green animate-pulse">BACKTEST_COMPLETE: WIN_RATE 68.2%</div>`;
-    }
+async function searchStock(value) {
+  const dropdown = document.getElementById('dropdown');
+  if (!value) { dropdown.classList.add('hidden'); return; }
+  dropdown.classList.remove('hidden');
+  dropdown.innerHTML = `<div style="padding:12px;font-size:11px;font-family:monospace;color:rgba(255,255,255,0.3)">Searching...</div>`;
+  try {
+    const res = await fetch(`${API}/search?query=${encodeURIComponent(value)}`);
+    const data = await res.json();
+    if (!data.length) { dropdown.innerHTML = `<div style="padding:12px;font-size:11px;font-family:monospace;color:rgba(255,255,255,0.3)">No results</div>`; return; }
+    dropdown.innerHTML = data.map(s => `
+      <div onclick="selectStock('${s.symbol}')" style="padding:10px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;transition:background 0.2s" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'">
+        <span style="font-size:12px;font-family:monospace;color:rgba(255,255,255,0.8)">${s.name}</span>
+        <span style="font-size:10px;font-family:monospace;color:#00f5ff">${s.symbol}</span>
+      </div>`).join('');
+  } catch(e) { dropdown.innerHTML = `<div style="padding:12px;color:#ff003c;font-size:11px">Search failed</div>`; }
+}
 
-    function loadModelStats() {
-        console.log("Fetching model performance metrics...");
-        const statsDiv = document.getElementById('modelStats');
-        statsDiv.innerHTML = `<div class="p-3 bg-secondary/10 border border-secondary/20 rounded text-[10px] font-mono text-secondary">MODEL_STABILITY: 0.94 | LOSS: 0.002</div>`;
-    }
+function selectStock(symbol) {
+  document.getElementById('searchInput').value = symbol;
+  document.getElementById('dropdown').classList.add('hidden');
+  fetchStock(symbol);
+}
 
-    function loadTopStocks() {
-        console.log("Analyzing top 5 opportunities...");
-        const topDiv = document.getElementById('topStocks');
-        topDiv.innerHTML = `<div class="p-3 bg-primary/10 border border-primary/20 rounded text-[10px] font-mono text-primary">TOP_OPP: TSLA, NVDA, BTC, ETH, PLTR</div>`;
-    }
+function addToWatchlist() {
+  if (!watchlist.includes(currentSymbol)) {
+    watchlist.push(currentSymbol);
+    localStorage.setItem('watchlist', JSON.stringify(watchlist));
+    renderWatchlist();
+    alert(currentSymbol + ' added ✅');
+  } else { alert('Already in watchlist'); }
+}
 
-    // Close search dropdown on click outside
-    document.addEventListener('click', (e) => {
-        const dropdown = document.getElementById('dropdown');
-        const searchInput = document.getElementById('searchInput');
-        if (!dropdown.contains(e.target) && e.target !== searchInput) {
-            dropdown.classList.add('hidden');
-        }
-    });
+function removeFromWatchlist(symbol) {
+  watchlist = watchlist.filter(s => s !== symbol);
+  localStorage.setItem('watchlist', JSON.stringify(watchlist));
+  renderWatchlist();
+}
+
+function renderWatchlist() {
+  const nav  = document.getElementById('watchlistNav');
+  const side = document.getElementById('watchlistSidebar');
+  if (nav) nav.innerHTML = watchlist.map(s => `
+    <span style="display:flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(0,245,255,0.1);border:1px solid rgba(0,245,255,0.2);border-radius:4px;font-size:10px;font-family:monospace;color:#00f5ff">
+      <span onclick="fetchStock('${s}')" style="cursor:pointer">${s}</span>
+      <span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer;margin-left:4px">×</span>
+    </span>`).join('');
+  if (side) side.innerHTML = watchlist.map(s => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+      <span onclick="fetchStock('${s}')" style="font-size:12px;font-family:monospace;color:white">${s}</span>
+      <span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer">×</span>
+    </div>`).join('');
+}
+
+async function loadBestStock() {
+  const loading = document.getElementById('loading-layer');
+  if (loading) loading.classList.remove('hidden');
+  try {
+    const res = await fetch(`${API}/top-opportunity`);
+    const data = await res.json();
+    const best = data.portfolio?.[0];
+    if (best) fetchStock(best.symbol);
+  } catch(e) { console.error(e); }
+  finally { if (loading) loading.classList.add('hidden'); }
+}
+
+async function runBacktest() {
+  const el = document.getElementById('backtestResult');
+  if (el) el.innerHTML = `<div style="padding:8px;font-size:10px;font-family:monospace;color:#00f5ff">RUNNING...</div>`;
+  try {
+    const res = await fetch(`${API}/backtest?symbol=${currentSymbol}`);
+    const d = await res.json();
+    const cur = currentSymbol.includes('.NS') ? '₹' : '$';
+    if (el) el.innerHTML = `
+      <div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;font-size:10px;font-family:monospace;line-height:1.8">
+        <div style="color:#00f5ff">BACKTEST — ${currentSymbol}</div>
+        <div style="color:rgba(255,255,255,0.5)">ACCURACY: <span style="color:white">${d.accuracy}%</span></div>
+        <div style="color:rgba(255,255,255,0.5)">W: <span style="color:#00ff41">${d.wins}</span> L: <span style="color:#ff003c">${d.losses}</span></div>
+        <div style="color:rgba(255,255,255,0.5)">PROFIT: <span style="color:${d.profit>=0?'#00ff41':'#ff003c'}">${cur}${d.profit}</span></div>
+        <div style="color:rgba(255,255,255,0.5)">FINAL: <span style="color:#00f5ff">${cur}${d.final_capital}</span></div>
+      </div>`;
+  } catch(e) { if (el) el.innerHTML = `<div style="color:#ff003c;font-size:10px;font-family:monospace">FAILED</div>`; }
+}
+
+async function loadModelStats() {
+  const el = document.getElementById('modelStats');
+  if (el) el.innerHTML = `<div style="padding:8px;font-size:10px;font-family:monospace;color:#9d4edd">LOADING...</div>`;
+  try {
+    const res = await fetch(`${API}/model-stats?symbol=${currentSymbol}`);
+    const d = await res.json();
+    if (el) el.innerHTML = `
+      <div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;font-size:10px;font-family:monospace;line-height:1.8">
+        <div style="color:#9d4edd">MODEL ANALYSIS</div>
+        <div style="color:rgba(255,255,255,0.5)">DT:  <span style="color:white">${d.decision_tree_accuracy}%</span></div>
+        <div style="color:rgba(255,255,255,0.5)">RF:  <span style="color:white">${d.random_forest_accuracy}%</span></div>
+        <div style="color:rgba(255,255,255,0.5)">LR:  <span style="color:white">${d.logistic_accuracy}%</span></div>
+        <div style="color:rgba(255,255,255,0.5)">XGB: <span style="color:white">${d.xgboost_accuracy}%</span></div>
+      </div>`;
+  } catch(e) { if (el) el.innerHTML = `<div style="color:#ff003c;font-size:10px;font-family:monospace">FAILED</div>`; }
+}
+
+async function loadTopStocks() {
+  const el = document.getElementById('topStocks');
+  if (el) el.innerHTML = `<div style="padding:8px;font-size:10px;font-family:monospace;color:#00f5ff">SCANNING...</div>`;
+  try {
+    const res = await fetch(`${API}/top-opportunity`);
+    const data = await res.json();
+    if (el) el.innerHTML = (data.portfolio||[]).map(s => `
+      <div onclick="fetchStock('${s.symbol}')" style="padding:8px;cursor:pointer;display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.05)" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'">
+        <span style="font-size:11px;font-family:monospace;color:white">${s.symbol} <span style="color:${s.prediction==='BUY'?'#00ff41':'#ff003c'}">${s.prediction}</span></span>
+        <span style="font-size:11px;font-family:monospace;color:#00f5ff">${s.confidence}%</span>
+      </div>`).join('');
+  } catch(e) { if (el) el.innerHTML = `<div style="color:#ff003c;font-size:10px;font-family:monospace">FAILED</div>`; }
+}
+
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('dropdown');
+  const searchInput = document.getElementById('searchInput');
+  if (dropdown && !dropdown.contains(e.target) && e.target !== searchInput) dropdown.classList.add('hidden');
+});
+
+renderWatchlist();
+fetchStock('AAPL');
 </script>
+
 </body></html>
