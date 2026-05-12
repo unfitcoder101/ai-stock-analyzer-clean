@@ -870,6 +870,11 @@ def simulate_profit(symbol: str = "AAPL"):
 def model_stats(symbol: str = "AAPL"):
     df = get_stock_data(symbol)
 
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df = df.loc[:, ~df.columns.duplicated()]
+
+
     if df.empty:
         return {"error": "Invalid symbol"}
 
