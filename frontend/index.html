@@ -1,636 +1,328 @@
 <!DOCTYPE html>
-
-<html class="dark" lang="en"><head>
+<html class="dark" lang="en">
+<head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Synthetic Oracle | Cinematic Intelligence</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&amp;family=Share+Tech+Mono&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              "background": "#050508",
-              "sidebar": "#08080e",
-              "primary": "#00f5ff",
-              "secondary": "#9d4edd",
-              "accent-green": "#00ff41",
-              "accent-red": "#ff003c",
-              "accent-yellow": "#ffcc00",
-              "surface": "#0d0d14",
-              "surface-bright": "#161622",
-              "outline": "#1a1a25",
-            },
-            fontFamily: {
-              "headline": ["Rajdhani", "sans-serif"],
-              "mono": ["Share Tech Mono", "monospace"],
-              "body": ["Inter", "sans-serif"],
-            },
-            animation: {
-              'shimmer': 'shimmer 2s infinite linear',
-              'scan': 'scan 4s infinite linear',
-              'pulse-cyan': 'pulse-cyan 2s infinite',
-              'glow-border': 'glow-border 2s infinite alternate',
-              'verdict-pulse': 'verdict-pulse 3s infinite ease-in-out',
-            },
-            keyframes: {
-              shimmer: {
-                '0%': { backgroundPosition: '-200% 0' },
-                '100%': { backgroundPosition: '200% 0' },
-              },
-              scan: {
-                '0%': { top: '-5%' },
-                '100%': { top: '105%' },
-              },
-              'pulse-cyan': {
-                '0%, 100%': { opacity: 1, filter: 'drop-shadow(0 0 5px #00f5ff)' },
-                '50%': { opacity: 0.5, filter: 'drop-shadow(0 0 2px #00f5ff)' },
-              },
-              'glow-border': {
-                '0%': { borderColor: 'rgba(0, 245, 255, 0.2)', boxShadow: '0 0 5px rgba(0, 245, 255, 0)' },
-                '100%': { borderColor: 'rgba(0, 245, 255, 0.6)', boxShadow: '0 0 15px rgba(0, 245, 255, 0.2)' },
-              },
-              'verdict-pulse': {
-                '0%, 100%': { filter: 'drop-shadow(0 0 15px rgba(0, 255, 65, 0.4))', transform: 'scale(1)' },
-                '50%': { filter: 'drop-shadow(0 0 45px rgba(0, 255, 65, 0.8))', transform: 'scale(1.02)' },
-              }
-            }
-          },
-        },
-      }
-    </script>
+<title>Synthetic Oracle | AI Stock Intelligence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-            vertical-align: middle;
-        }
-        body {
-            background-color: #050508;
-            background-image: 
-                radial-gradient(circle at 50% 50%, rgba(0, 245, 255, 0.02) 0%, transparent 80%),
-                linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
-            background-size: 100% 100%, 40px 40px, 40px 40px;
-            color: #ffffff;
-            font-family: 'Inter', sans-serif;
-            overflow-x: hidden;
-        }
-        .hero-glow-buy {
-            text-shadow: 0 0 20px rgba(0, 255, 65, 0.5), 0 0 40px rgba(0, 255, 65, 0.2);
-            animation: verdict-pulse 3s infinite ease-in-out;
-        }
-        .cyber-panel {
-            background: rgba(13, 13, 20, 0.6);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            position: relative;
-            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.5);
-        }
-        .cyber-panel::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-            opacity: 0.03;
-            pointer-events: none;
-            mix-blend-mode: overlay;
-        }
-        .cyber-panel::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; width: 2px; height: 12px;
-            background: #00f5ff;
-            box-shadow: 0 0 8px #00f5ff;
-        }
-        .glass-nav {
-            background: rgba(5, 5, 8, 0.85);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(0, 245, 255, 0.1);
-        }
-        .skeleton {
-            background: linear-gradient(90deg, #0d0d14 25%, #1a1a24 50%, #0d0d14 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-        }
-        .num-mono { font-family: 'Share Tech Mono', monospace; }
-        .logo-glow:hover {
-            filter: drop-shadow(0 0 12px rgba(0, 245, 255, 0.6));
-            transform: scale(1.02);
-        }
-        .hover-glow:hover {
-            border-color: rgba(0, 245, 255, 0.4);
-            box-shadow: 0 0 20px rgba(0, 245, 255, 0.1), inset 0 0 10px rgba(0, 245, 255, 0.05);
-            transition: all 0.3s ease;
-        }
-        #dropdown {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        #dropdown::-webkit-scrollbar {
-            width: 4px;
-        }
-        #dropdown::-webkit-scrollbar-thumb {
-            background: rgba(0, 245, 255, 0.3);
-        }
-    </style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background-color: #050508;
+  background-image: linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+.material-symbols-outlined { font-variation-settings: 'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; vertical-align: middle; }
+.cyber-panel { background: rgba(13,13,20,0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); position: relative; }
+.cyber-panel::before { content: ''; position: absolute; top: 0; left: 0; width: 2px; height: 16px; background: #00f5ff; box-shadow: 0 0 8px #00f5ff; }
+.sidebar { position: fixed; left: 0; top: 0; width: 240px; height: 100vh; background: #08080e; border-right: 1px solid #1a1a25; display: flex; flex-direction: column; z-index: 50; overflow-y: auto; }
+.topnav { position: fixed; top: 0; left: 240px; right: 0; height: 72px; background: rgba(5,5,8,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0,245,255,0.1); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 40; }
+.main-content { margin-left: 240px; padding-top: 88px; padding-left: 32px; padding-right: 32px; padding-bottom: 48px; min-height: 100vh; }
+#dropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 8px; background: #0d0d14; border: 1px solid #1a1a25; border-radius: 8px; max-height: 400px; overflow-y: auto; z-index: 100; display: none; }
+#dropdown.show { display: block; }
+.verdict-text { font-family: 'Rajdhani', sans-serif; font-size: 6rem; font-weight: 900; font-style: italic; letter-spacing: -0.05em; line-height: 1; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes scan { 0% { top: -5%; } 100% { top: 105%; } }
+</style>
 </head>
-<body class="selection:bg-primary/30 selection:text-primary">
-<!-- SideNavBar -->
-<aside class="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-outline hidden md:flex flex-col z-50 transition-all duration-300" id="sidebar">
-<div class="p-6">
-<div class="flex items-center gap-3 group cursor-pointer logo-glow transition-all">
-<div class="w-10 h-10 bg-gradient-to-br from-primary via-secondary to-purple-800 rounded flex items-center justify-center shadow-[0_0_15px_rgba(0,245,255,0.3)]">
-<span class="material-symbols-outlined text-background font-bold">terminal</span>
-</div>
-<span class="font-headline text-xl font-bold tracking-tighter uppercase italic">Synthetic<br/><span class="text-primary">Oracle</span></span>
-</div>
-</div>
-<nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-<a class="flex items-center gap-4 bg-primary/10 text-primary border-l-2 border-primary px-4 py-3 font-headline uppercase tracking-widest text-xs" href="#">
-<span class="material-symbols-outlined text-lg">dashboard</span>
-<span>Dashboard</span>
-</a>
-<button class="w-full flex items-center gap-4 text-white/30 hover:text-primary hover:bg-white/5 px-4 py-3 transition-all font-headline uppercase tracking-widest text-xs" onclick="loadTopStocks()">
-<span class="material-symbols-outlined text-lg">rocket_launch</span>
-<span>Top Opportunities</span>
-</button>
-<button class="w-full flex items-center gap-4 text-white/30 hover:text-primary hover:bg-white/5 px-4 py-3 transition-all font-headline uppercase tracking-widest text-xs" onclick="loadModelStats()">
-<span class="material-symbols-outlined text-lg">analytics</span>
-<span>Model Analysis</span>
-</button>
-<button class="w-full flex items-center gap-4 text-white/30 hover:text-primary hover:bg-white/5 px-4 py-3 transition-all font-headline uppercase tracking-widest text-xs" onclick="runBacktest()">
-<span class="material-symbols-outlined text-lg">history</span>
-<span>Run Backtest</span>
-</button>
-<!-- Watchlist -->
-<div class="pt-10">
-<h4 class="text-[9px] font-bold text-white/20 uppercase tracking-[0.4em] px-4 mb-5">Watchlist_Monitor</h4>
-<div class="space-y-4" id="watchlistSidebar">
-<!-- Watchlist items populated here -->
-<div class="px-4 flex items-center justify-between group cursor-pointer hover:bg-white/5 py-2 transition-colors rounded">
-<div>
-<p class="text-xs font-mono font-bold text-white group-hover:text-primary transition-colors">TSLA.NAS</p>
-<p class="text-[10px] text-accent-red num-mono tracking-tight">-2.42%</p>
-</div>
-<div class="w-20 h-8 bg-accent-red/5 rounded overflow-hidden relative border border-accent-red/10">
-<svg class="w-full h-full text-accent-red/40" preserveaspectratio="none" viewbox="0 0 100 40"><path d="M0,20 L20,30 L40,10 L60,35 L80,15 L100,25" fill="none" stroke="currentColor" stroke-width="1.5"></path></svg>
-</div>
-</div>
-</div>
-</div>
-<div class="px-4 mt-6" id="backtestResult"></div>
-<div class="px-4 mt-2" id="modelStats"></div>
-<div class="px-4 mt-2" id="topStocks"></div>
-</nav>
-<div class="p-6 border-t border-white/5">
-<div class="flex items-center gap-3 p-3 bg-primary/5 rounded border border-primary/10">
-<div class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_#00f5ff]"></div>
-<span class="text-[9px] font-mono text-primary uppercase tracking-[0.2em]">Network_Secure_AES256</span>
-</div>
-<button class="w-full mt-4 py-3 bg-gradient-to-r from-secondary/80 to-purple-600/80 text-white font-headline font-bold uppercase tracking-[0.25em] text-[10px] rounded hover:shadow-[0_0_25px_rgba(157,78,221,0.5)] transition-all border border-white/10">
-            Upgrade Nexus
-        </button>
-</div>
-</aside>
-<!-- Top Navbar -->
-<nav class="fixed top-0 right-0 left-0 md:left-64 h-20 glass-nav z-40 flex items-center justify-between px-10">
-<div class="flex-1 max-w-xl relative">
-<div class="relative group">
-<div class="absolute inset-y-0 left-4 flex items-center text-primary/30 group-focus-within:text-primary transition-colors">
-<span class="material-symbols-outlined text-lg">search</span>
-</div>
-<input class="w-full bg-white/5 border border-white/10 focus:border-primary/40 focus:ring-0 focus:bg-white/10 rounded px-12 py-2.5 text-xs font-mono placeholder:text-white/20 transition-all uppercase tracking-widest" id="searchInput" onkeyup="searchStock(this.value)" placeholder="SEARCH_DATABASE (AAPL, BTC, TSLA)..." type="text"/>
-<div class="absolute bottom-0 left-0 h-[1px] bg-primary scale-x-0 group-focus-within:scale-x-100 transition-transform duration-700 origin-left w-full shadow-[0_0_8px_#00f5ff]"></div>
-</div>
-<!-- Dropdown Container -->
-<div class="absolute top-full left-0 right-0 mt-2 bg-surface border border-outline rounded-lg hidden shadow-2xl z-50" id="dropdown"></div>
-</div>
-<div class="flex items-center gap-8">
-<!-- Watchlist Nav -->
-<div class="hidden xl:flex items-center gap-2 px-5 border-l border-white/10 h-10" id="watchlistNav">
-<!-- Navbar pills here -->
-</div>
-<div class="hidden lg:flex items-center gap-4 px-5 border-l border-white/10 h-10">
-<span class="text-[9px] font-mono text-white/30 uppercase tracking-[0.2em]">System_Regime:</span>
-<span class="px-3 py-0.5 bg-accent-green/5 text-accent-green text-[9px] font-bold border border-accent-green/20 rounded-full uppercase tracking-widest shadow-[0_0_10px_rgba(0,255,65,0.1)]" id="regime">TREND_UP</span>
-</div>
-<div class="flex items-center gap-4">
-<button class="p-2 text-white/30 hover:text-primary transition-colors" onclick="addToWatchlist()" title="Add to Watchlist">
-<span class="material-symbols-outlined text-xl">bookmark_add</span>
-</button>
-<button class="p-2 text-white/30 hover:text-accent-yellow transition-colors" onclick="loadBestStock()" title="Best Stock Today">
-<span class="material-symbols-outlined text-xl">stars</span>
-</button>
-<button class="p-2 text-white/30 hover:text-primary transition-colors relative">
-<span class="material-symbols-outlined text-xl">notifications</span>
-<span class="absolute top-2 right-2 w-1.5 h-1.5 bg-accent-red rounded-full"></span>
-</button>
-</div>
-<div class="flex items-center gap-4 pl-6 border-l border-white/10">
-<div class="text-right hidden sm:block">
-<p class="text-[10px] font-bold text-white uppercase tracking-wider">Analyst_092</p>
-<p class="text-[8px] text-primary/50 font-mono tracking-widest">RANK: PROFESSIONAL</p>
-</div>
-<div class="w-10 h-10 rounded-full border border-primary/20 p-1 group cursor-pointer">
-<img alt="User" class="w-full h-full rounded-full object-cover grayscale hover:grayscale-0 transition-all duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC4730K0R_Gl396C57Sbwwsa0r-ffvlvU3Twu_vQ-NZG2CD4DHK_WuNr2XEhjwd2Qt6khnyY4hA89At5Q-TaQ011dkspLB5JHW-KFdyNfL8Jes5cEJ-vWR38xVp03RCV9PnNF_4lQRJeZ-ZYSAoCPEAhnLjHxRnfBP8NlTuQWRH68ONgJGhn4v77GyDDDSWGhxRs6GwNLYajf_7Xioexo1IS4c6JrvWWXM-WrPTfYy8nsjBnoWUa6wkOoT6C-8V7V2C2mSRiaU9dRo"/>
-</div>
-</div>
-</div>
-</nav>
-<!-- Main Content -->
-<main style="margin-left:256px; padding-top:80px; padding-left:40px; padding-right:40px; min-height:100vh;">
-<div class="max-w-7xl mx-auto space-y-10">
-<!-- Hero Section -->
-<section class="grid grid-cols-1 xl:grid-cols-3 gap-8">
-<div class="xl:col-span-2 cyber-panel p-10 rounded-lg border-white/10 shadow-2xl hover-glow">
-<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-10">
-<div>
-<div class="flex items-center gap-5 mb-4">
-<h1 class="font-headline text-4xl md:text-6xl font-black tracking-tighter uppercase italic leading-none" id="stockName">Apple Inc. <span class="text-primary/40 text-2xl not-italic font-mono">(AAPL.NAS)</span></h1>
-<span class="material-symbols-outlined text-primary cursor-pointer hover:scale-110 transition-transform">star</span>
-</div>
-<div class="flex items-baseline gap-6">
-<span class="text-6xl font-mono font-bold tracking-tighter text-white tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]" id="price">$192.42</span>
-<span class="text-accent-green font-mono text-xl tracking-tighter">+2.14 (+1.12%)</span>
-</div>
-<div class="flex flex-wrap gap-2 mt-8">
-<span class="px-3 py-1 bg-white/5 text-[10px] font-mono text-white/50 border border-white/10 rounded-sm">DT:BULL</span>
-<span class="px-3 py-1 bg-white/5 text-[10px] font-mono text-white/50 border border-white/10 rounded-sm">RF:BULL</span>
-<span class="px-3 py-1 bg-white/5 text-[10px] font-mono text-white/50 border border-white/10 rounded-sm">LG:BULL</span>
-<span class="px-3 py-1 bg-white/5 text-[10px] font-mono text-white/50 border border-white/10 rounded-sm">XGB:BULL</span>
-<span class="ml-2 px-3 py-1 bg-primary/10 text-[10px] font-bold text-primary border border-primary/30 uppercase tracking-[0.2em] shadow-[0_0_10px_rgba(0,245,255,0.1)]">4/4 MODELS CONVERGED</span>
-</div>
-</div>
-<div class="text-right">
-<p class="text-[10px] font-bold text-white/20 uppercase tracking-[0.5em] mb-3">Synthetic Verdict</p>
-<h2 class="text-9xl font-headline font-black italic tracking-tighter text-accent-green hero-glow-buy" id="verdict">BUY</h2>
-<div class="mt-6 w-56 ml-auto">
-<div class="flex justify-between text-[10px] font-mono text-white/40 uppercase mb-2 tracking-widest">
-<span>Confidence</span>
-<span class="text-primary font-bold" id="confidence">94.8%</span>
-</div>
-<div class="h-2 w-full bg-white/5 rounded-full overflow-hidden border border-white/5">
-<div class="h-full bg-gradient-to-r from-secondary via-primary to-accent-green w-[94.8%] animate-pulse" id="confidenceBar"></div>
-</div>
-</div>
-</div>
-</div>
-<button class="mt-10 flex items-center gap-4 text-[10px] font-headline font-bold uppercase tracking-[0.3em] bg-white/5 hover:bg-primary hover:text-background border border-white/10 px-8 py-3 transition-all rounded">
-<span class="w-2.5 h-2.5 rounded-full bg-accent-green shadow-[0_0_8px_#00ff41]"></span>
-                    Optimal Entry Point Identified
-                    <span class="material-symbols-outlined text-sm font-bold">arrow_forward_ios</span>
-</button>
-</div>
-<!-- Trade Plan Section -->
-<div class="cyber-panel p-10 rounded-lg bg-gradient-to-br from-white/[0.03] to-transparent border-white/10 hover-glow">
-<h3 class="font-headline text-lg font-bold uppercase tracking-[0.3em] flex items-center gap-3 mb-10 text-white/80">
-<span class="material-symbols-outlined text-primary">target</span> Trade_Protocol_v4
-                </h3>
-<div class="grid grid-cols-2 gap-5">
-<div class="p-5 bg-white/[0.02] border-t-2 border-primary rounded-b">
-<p class="text-[10px] font-mono text-white/30 uppercase mb-2">Entry_Zone</p>
-<p class="text-3xl font-mono text-white tabular-nums" id="entry">$192.10</p>
-</div>
-<div class="p-5 bg-white/[0.02] border-t-2 border-accent-red rounded-b">
-<p class="text-[10px] font-mono text-white/30 uppercase mb-2">Stop_Loss</p>
-<p class="text-3xl font-mono text-accent-red tabular-nums" id="stopLoss">$188.45</p>
-</div>
-<div class="p-5 bg-white/[0.02] border-t-2 border-accent-green rounded-b">
-<p class="text-[10px] font-mono text-white/30 uppercase mb-2">Profit_Target</p>
-<p class="text-3xl font-mono text-accent-green tabular-nums" id="target">$204.00</p>
-</div>
-<div class="p-5 bg-white/[0.02] border-t-2 border-secondary rounded-b">
-<p class="text-[10px] font-mono text-white/30 uppercase mb-2">RR_Ratio</p>
-<p class="text-3xl font-mono text-secondary tabular-nums" id="rr">1:3.2</p>
-</div>
-</div>
-<div class="mt-8 flex items-start gap-4 p-5 bg-primary/5 border border-primary/20 rounded">
-<span class="material-symbols-outlined text-primary text-lg mt-1">info</span>
-<p class="text-[10px] text-white/60 leading-relaxed uppercase font-mono">NEURAL_ENGINE_V4.2_ADVISORY: RECOMMENDED LEVERAGE 3.5X MAX. LIQUIDITY DEPTH SECURE AT ALL LEVELS.</p>
-</div>
-</div>
-</section>
-<!-- Main Dashboard Grid -->
-<div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
-<!-- Chart Engine -->
-<div class="lg:col-span-3 cyber-panel rounded-lg overflow-hidden flex flex-col hover-glow transition-all duration-500">
-<div class="p-5 border-b border-white/10 flex justify-between items-center bg-white/[0.02]">
-<div class="flex items-center gap-5">
-<div class="flex items-center gap-2">
-<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-<span class="text-xs font-headline font-bold uppercase tracking-[0.25em] text-primary">Live_Projection_Shell</span>
-</div>
-</div>
-<div class="flex bg-white/5 rounded-sm p-1 border border-white/10">
-<button class="px-4 py-1 text-[10px] font-mono text-white/30 hover:text-white uppercase transition-colors">1H</button>
-<button class="px-4 py-1 text-[10px] font-mono bg-primary text-background font-bold uppercase rounded-sm shadow-[0_0_10px_rgba(0,245,255,0.4)]">1D</button>
-<button class="px-4 py-1 text-[10px] font-mono text-white/30 hover:text-white uppercase transition-colors">1W</button>
-</div>
-</div>
-<div class="flex-1 bg-black relative min-h-[500px]">
-<div class="w-full h-full min-h-[500px] border-none grayscale-[0.8] hover:grayscale-0 transition-all duration-700" id="chart">
-<!-- Chart content / TradingView iframe injected here -->
-<img alt="Chart Placeholder" class="w-full h-full object-cover opacity-20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD5NkSP7gbLfmCWZLrHrkKYL_UBINCskrnb-hRfTTfySlSLX8qXSsxVeMd376lRClh5GYWdgP7W7zIlSJUF93y0D-0VtN_KmVnRvZZrtK9-ZLXbnFyb4yGeoVuYShHwZCDMQHjBZuYYqEDK2eyHDljwFCSWwl9U1qm84un-yKyeV2_Fl-m1SB7uMI_pqO_Ek5KU6ymmJVMXk5vDVrGoqN2Er7kqOTP0qPbRHkLkQ49ibRHllgvb0NdT1DZk9eBCLoGs4BMhSQM6gUI"/>
-</div>
-<!-- Immersive Scanning Line Effect -->
-<div class="absolute inset-0 pointer-events-none overflow-hidden">
-<div class="absolute left-0 right-0 h-[3px] bg-primary/40 shadow-[0_0_30px_rgba(0,245,255,1)] animate-scan"></div>
-<div class="absolute inset-0 opacity-[0.03]" style="background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px); background-size: 20px 20px;"></div>
-</div>
-</div>
-<div class="p-5 bg-sidebar/50 flex justify-between border-t border-white/5">
-<div class="flex gap-12">
-<div>
-<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-1">Volume_24h_Metric</p>
-<p class="text-sm font-mono text-white tabular-nums">42,108,392.00</p>
-</div>
-<div>
-<p class="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-1">Volatility_Index</p>
-<p class="text-sm font-mono text-accent-yellow">LOW_STABLE_0.14</p>
-</div>
-</div>
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-primary text-xl animate-pulse-cyan">hub</span>
-<span class="text-[10px] font-headline font-bold text-primary uppercase tracking-[0.3em]">Neural_Feedback_Active</span>
-</div>
-</div>
-</div>
-<!-- Analysis Sidebar -->
-<div class="lg:col-span-2 space-y-8">
-<!-- Signal Engine -->
-<div class="cyber-panel p-8 rounded-lg border-white/10 hover-glow group transition-all">
-<h3 class="font-headline text-sm font-bold uppercase tracking-[0.3em] flex items-center gap-3 mb-8 text-white/80">
-<span class="material-symbols-outlined text-secondary">sensors</span> Signal_Engine_v2.0
-                    </h3>
-<ul class="space-y-5" id="signals">
-<li class="flex items-center justify-between p-4 bg-white/[0.01] border border-white/5 hover:border-primary/20 transition-all rounded relative overflow-hidden">
-<div class="absolute inset-y-0 left-0 w-1 bg-accent-green opacity-50"></div>
-<span class="text-xs font-headline uppercase tracking-[0.15em] text-white/80">Moving_Avg_Cross_20_50</span>
-<span class="text-[11px] font-mono text-accent-green font-bold">ACTIVE_BUY</span>
-</li>
-<li class="flex items-center justify-between p-4 bg-white/[0.01] border border-white/5 hover:border-accent-yellow/20 transition-all rounded relative overflow-hidden">
-<div class="absolute inset-y-0 left-0 w-1 bg-accent-yellow opacity-50"></div>
-<span class="text-xs font-headline uppercase tracking-[0.15em] text-white/80">RSI_Intensity_Algorithm</span>
-<span class="text-[11px] font-mono text-accent-yellow font-bold">NEUTRAL</span>
-</li>
-</ul>
-<!-- Mini HUD HUD graphic for Signal strength -->
-<div class="pt-8 flex items-end justify-between gap-1 h-12 px-2">
-<div class="flex-1 bg-primary/20 h-[20%] rounded-t-sm"></div>
-<div class="flex-1 bg-primary/30 h-[40%] rounded-t-sm"></div>
-<div class="flex-1 bg-primary/40 h-[70%] rounded-t-sm"></div>
-<div class="flex-1 bg-primary/60 h-[90%] rounded-t-sm"></div>
-<div class="flex-1 bg-primary/80 h-[85%] rounded-t-sm shadow-[0_0_10px_#00f5ff]"></div>
-<div class="flex-1 bg-primary/40 h-[60%] rounded-t-sm"></div>
-<div class="flex-1 bg-primary/20 h-[30%] rounded-t-sm"></div>
-</div>
-</div>
-<!-- Market Structure -->
-<div class="cyber-panel p-8 rounded-lg bg-gradient-to-tr from-secondary/[0.02] to-transparent border-white/10 hover-glow">
-<h3 class="font-headline text-sm font-bold uppercase tracking-[0.3em] flex items-center gap-3 mb-8 text-white/80">
-<span class="material-symbols-outlined text-primary">layers</span> Structure_Matrix_09
-                    </h3>
-<div class="space-y-4">
-<div class="flex justify-between items-center py-3 border-b border-white/5 px-2 transition-colors">
-<span class="text-[10px] font-mono text-white/40 uppercase tracking-widest">Correlation_SPX</span>
-<span class="text-xs font-mono text-white tabular-nums">0.824_HIGH_POS</span>
-</div>
-<div class="flex justify-between items-center py-3 border-b border-white/5 px-2 transition-colors">
-<span class="text-[10px] font-mono text-white/40 uppercase tracking-widest">Social_Sentiment</span>
-<span class="text-xs font-mono text-primary font-bold">72.4/100.0</span>
-</div>
-<div class="flex justify-between items-center py-3 px-2 transition-colors">
-<span class="text-[10px] font-mono text-white/40 uppercase tracking-widest">Computation_Load</span>
-<span class="text-xs font-mono text-white/60 tabular-nums">4.2ms_STABLE</span>
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- AI Insight Section -->
-<section class="cyber-panel p-12 rounded-lg overflow-hidden border-white/10 hover-glow transition-all duration-700">
-<div class="absolute top-0 right-0 w-96 h-96 bg-secondary/5 blur-[120px] pointer-events-none"></div>
-<div class="absolute bottom-0 left-0 w-64 h-64 bg-primary/5 blur-[100px] pointer-events-none"></div>
-<div class="flex flex-col md:flex-row gap-12 items-start relative z-10">
-<div class="w-24 h-24 bg-gradient-to-br from-primary via-secondary to-purple-800 rounded-xl flex items-center justify-center relative shrink-0 group">
-<div class="absolute inset-0 bg-primary/20 animate-ping rounded-xl opacity-50"></div>
-<div class="absolute inset-0 border border-primary/30 rounded-xl group-hover:scale-110 transition-transform"></div>
-<span class="material-symbols-outlined text-5xl text-background font-bold relative z-10">smart_toy</span>
-</div>
-<div class="flex-1 space-y-8">
-<div class="flex items-center gap-6">
-<h2 class="font-headline text-3xl font-black italic tracking-tighter uppercase text-white/90">Oracle Synthetic Intelligence Output</h2>
-<span class="px-3 py-1 bg-primary/5 border border-primary/20 text-[10px] font-mono text-primary rounded-sm tracking-widest">v4.2.0_STABLE_KERNEL</span>
-</div>
-<div class="text-base font-mono text-white/80 leading-relaxed max-w-5xl space-y-5">
-<p class="border-l-2 border-white/10 pl-6 py-2" id="aiAnalysis">
-                            Institutional accumulation patterns detected in 15min dark pools. Net inflow volume <span class="text-accent-green">+14.2%</span> compared to 7-day average. 
-                            Resistance shell at $195.00 appears fragile. Stochastic projection: Breakout imminent within 48-72 trading hours.
-                        </p>
-</div>
-<div class="pt-6 flex flex-wrap gap-10">
-<div class="flex items-center gap-3 group">
-<span class="material-symbols-outlined text-primary text-lg transition-transform group-hover:rotate-12">security</span>
-<span class="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">Integrity_Score: <span class="text-white">99.82%</span></span>
-</div>
-<div class="flex items-center gap-3 group">
-<span class="material-symbols-outlined text-secondary text-lg transition-transform group-hover:rotate-12">bolt</span>
-<span class="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">Inference_Cycle: <span class="text-white">124ms</span></span>
-</div>
-<div class="flex items-center gap-3 group">
-<span class="material-symbols-outlined text-accent-green text-lg transition-transform group-hover:rotate-12">check_circle</span>
-<span class="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">Core_Status: <span class="text-accent-green">NOMINAL_OP</span></span>
-</div>
-</div>
-</div>
-</div>
-</section>
-</div>
-</main>
-<!-- Loading Layer -->
-<div class="fixed inset-0 bg-background z-[100] flex items-center justify-center hidden" id="loading-layer">
-<div class="flex flex-col items-center gap-8">
-<div class="w-20 h-20 border-2 border-primary/10 border-t-primary rounded-full animate-spin shadow-[0_0_20px_rgba(0,245,255,0.2)]"></div>
-<p class="font-headline text-xl text-primary tracking-[0.6em] uppercase animate-pulse">Initializing_Terminal_Core...</p>
-</div>
-</div>
-<script>
+<body>
 
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div style="padding:24px 20px;border-bottom:1px solid #1a1a25">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:40px;height:40px;background:linear-gradient(135deg,#00f5ff,#9d4edd);border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 15px rgba(0,245,255,0.3)">
+        <span class="material-symbols-outlined" style="color:#050508;font-size:20px">terminal</span>
+      </div>
+      <div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase;font-style:italic">Synthetic</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase;font-style:italic;color:#00f5ff">Oracle</div>
+      </div>
+    </div>
+  </div>
+  <nav style="padding:16px 12px;flex:1">
+    <a href="#" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,245,255,0.08);border-left:2px solid #00f5ff;color:#00f5ff;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;text-decoration:none;margin-bottom:4px;border-radius:0 4px 4px 0">
+      <span class="material-symbols-outlined" style="font-size:18px">dashboard</span>Dashboard
+    </a>
+    <button onclick="loadTopStocks()" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;cursor:pointer;margin-bottom:4px" onmouseover="this.style.color='#00f5ff'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
+      <span class="material-symbols-outlined" style="font-size:18px">rocket_launch</span>Top Opportunities
+    </button>
+    <button onclick="loadModelStats()" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;cursor:pointer;margin-bottom:4px" onmouseover="this.style.color='#00f5ff'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
+      <span class="material-symbols-outlined" style="font-size:18px">analytics</span>Model Analysis
+    </button>
+    <button onclick="runBacktest()" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;cursor:pointer;margin-bottom:20px" onmouseover="this.style.color='#00f5ff'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
+      <span class="material-symbols-outlined" style="font-size:18px">history</span>Run Backtest
+    </button>
+    <div style="padding:0 4px;margin-bottom:8px">
+      <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.4em;margin-bottom:12px;padding:0 12px">Watchlist</div>
+      <div id="watchlistSidebar"></div>
+    </div>
+    <div id="backtestResult" style="padding:0 8px;margin-top:12px;font-size:10px;font-family:'Share Tech Mono',monospace"></div>
+    <div id="modelStats" style="padding:0 8px;margin-top:8px;font-size:10px;font-family:'Share Tech Mono',monospace"></div>
+    <div id="topStocks" style="padding:0 8px;margin-top:8px;font-size:10px;font-family:'Share Tech Mono',monospace"></div>
+  </nav>
+</aside>
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <div style="flex:1;max-width:480px;position:relative">
+    <span class="material-symbols-outlined" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:rgba(0,245,255,0.4);font-size:18px;z-index:1">search</span>
+    <input id="searchInput" onkeyup="searchStock(this.value)"
+      style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px 10px 40px;font-size:11px;font-family:'Share Tech Mono',monospace;color:white;outline:none;text-transform:uppercase;letter-spacing:0.1em"
+      placeholder="SEARCH (AAPL, TSLA, RELIANCE.NS)..."
+      onfocus="this.style.borderColor='rgba(0,245,255,0.4)'"
+      onblur="this.style.borderColor='rgba(255,255,255,0.1)'"/>
+    <div id="dropdown"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div id="watchlistNav" style="display:flex;gap:8px;align-items:center"></div>
+    <div style="display:flex;align-items:center;gap:8px;padding-left:16px;border-left:1px solid rgba(255,255,255,0.1)">
+      <span style="font-size:9px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.3);text-transform:uppercase">Regime:</span>
+      <span id="regime" style="padding:3px 10px;background:rgba(0,255,65,0.05);color:#00ff41;font-size:9px;font-family:'Share Tech Mono',monospace;font-weight:700;border:1px solid rgba(0,255,65,0.2);border-radius:20px;text-transform:uppercase">—</span>
+    </div>
+    <button onclick="addToWatchlist()" style="padding:8px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer" onmouseover="this.style.color='#00f5ff'" onmouseout="this.style.color='rgba(255,255,255,0.3)'" title="Add to Watchlist">
+      <span class="material-symbols-outlined">bookmark_add</span>
+    </button>
+    <button onclick="loadBestStock()" style="padding:8px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer" onmouseover="this.style.color='#ffcc00'" onmouseout="this.style.color='rgba(255,255,255,0.3)'" title="Best Stock Today">
+      <span class="material-symbols-outlined">stars</span>
+    </button>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main class="main-content">
+  <div style="max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:24px">
+
+    <!-- ROW 1: Hero + Trade Plan -->
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px">
+
+      <!-- Hero -->
+      <div class="cyber-panel" style="padding:40px;border-radius:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
+          <div>
+            <h1 id="stockName" style="font-family:'Rajdhani',sans-serif;font-size:2.8rem;font-weight:900;text-transform:uppercase;font-style:italic;letter-spacing:-0.02em;line-height:1.1;margin-bottom:16px">
+              Apple Inc. <span style="color:#00f5ff;font-size:1.4rem;font-style:normal;font-family:'Share Tech Mono',monospace">(AAPL)</span>
+            </h1>
+            <div id="price" style="font-family:'Share Tech Mono',monospace;font-size:3rem;font-weight:700;color:white;margin-bottom:24px">—</div>
+            <div id="modelPills" style="display:flex;flex-wrap:wrap;gap:8px">
+              <span style="padding:4px 10px;background:rgba(255,255,255,0.05);font-size:10px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:2px">Loading...</span>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.5em;margin-bottom:8px">Synthetic Verdict</div>
+            <div id="verdict" class="verdict-text" style="color:#ffcc00">—</div>
+            <div style="margin-top:20px;width:200px;margin-left:auto">
+              <div style="display:flex;justify-content:space-between;font-size:10px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.4);margin-bottom:6px">
+                <span>CONFIDENCE</span>
+                <span id="confidence" style="color:#00f5ff;font-weight:700">0%</span>
+              </div>
+              <div style="height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;border:1px solid rgba(255,255,255,0.05)">
+                <div id="confidenceBar" style="height:100%;background:linear-gradient(90deg,#9d4edd,#00f5ff,#00ff41);width:0%;transition:width 0.8s ease;border-radius:3px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade Plan -->
+      <div class="cyber-panel" style="padding:32px;border-radius:12px">
+        <h3 style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:rgba(255,255,255,0.7);margin-bottom:24px;display:flex;align-items:center;gap:8px">
+          <span class="material-symbols-outlined" style="color:#00f5ff;font-size:18px">target</span>Trade Protocol
+        </h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="padding:16px;background:rgba(255,255,255,0.02);border-top:2px solid #00f5ff;border-radius:0 0 6px 6px">
+            <div style="font-size:9px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:8px">Entry</div>
+            <div id="entry" style="font-size:1.3rem;font-family:'Share Tech Mono',monospace;color:white">—</div>
+          </div>
+          <div style="padding:16px;background:rgba(255,255,255,0.02);border-top:2px solid #ff003c;border-radius:0 0 6px 6px">
+            <div style="font-size:9px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:8px">Stop Loss</div>
+            <div id="stopLoss" style="font-size:1.3rem;font-family:'Share Tech Mono',monospace;color:#ff003c">—</div>
+          </div>
+          <div style="padding:16px;background:rgba(255,255,255,0.02);border-top:2px solid #00ff41;border-radius:0 0 6px 6px">
+            <div style="font-size:9px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:8px">Target</div>
+            <div id="target" style="font-size:1.3rem;font-family:'Share Tech Mono',monospace;color:#00ff41">—</div>
+          </div>
+          <div style="padding:16px;background:rgba(255,255,255,0.02);border-top:2px solid #9d4edd;border-radius:0 0 6px 6px">
+            <div style="font-size:9px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:8px">Risk/Reward</div>
+            <div id="rr" style="font-size:1.3rem;font-family:'Share Tech Mono',monospace;color:#9d4edd">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2: Chart + Signals -->
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:24px">
+      <div class="cyber-panel" style="border-radius:12px;overflow:hidden">
+        <div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.01)">
+          <span style="width:6px;height:6px;border-radius:50%;background:#00f5ff;display:inline-block;animation:pulse 2s infinite"></span>
+          <span style="font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.25em;color:#00f5ff">Live Chart</span>
+        </div>
+        <div id="chart" style="height:460px;background:#000">
+          <iframe src="https://s.tradingview.com/widgetembed/?symbol=AAPL&interval=D&theme=dark&allow_symbol_change=1" width="100%" height="460" frameborder="0" style="display:block"></iframe>
+        </div>
+      </div>
+      <div class="cyber-panel" style="padding:24px;border-radius:12px">
+        <h3 style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:rgba(255,255,255,0.7);margin-bottom:20px;display:flex;align-items:center;gap:8px">
+          <span class="material-symbols-outlined" style="color:#9d4edd;font-size:18px">sensors</span>Signal Engine
+        </h3>
+        <ul id="signals" style="list-style:none;display:flex;flex-direction:column;gap:8px">
+          <li style="padding:12px;border:1px solid rgba(255,255,255,0.05);border-radius:4px;color:rgba(255,255,255,0.3);font-size:11px;font-family:'Share Tech Mono',monospace">Loading...</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ROW 3: AI Analysis -->
+    <div class="cyber-panel" style="padding:40px;border-radius:12px">
+      <div style="display:flex;gap:32px;align-items:flex-start">
+        <div style="width:64px;height:64px;background:linear-gradient(135deg,#00f5ff,#9d4edd);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 20px rgba(0,245,255,0.2)">
+          <span class="material-symbols-outlined" style="font-size:32px;color:#050508">smart_toy</span>
+        </div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+            <h2 style="font-family:'Rajdhani',sans-serif;font-size:1.8rem;font-weight:900;font-style:italic;text-transform:uppercase;color:rgba(255,255,255,0.9)">Oracle Intelligence Output</h2>
+            <span style="padding:4px 10px;background:rgba(0,245,255,0.05);border:1px solid rgba(0,245,255,0.2);font-size:9px;font-family:'Share Tech Mono',monospace;color:#00f5ff;border-radius:2px">AI POWERED BY GROQ</span>
+          </div>
+          <p id="aiAnalysis" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:rgba(255,255,255,0.7);line-height:1.9;border-left:2px solid rgba(0,245,255,0.2);padding-left:20px;white-space:pre-wrap">Analyzing...</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- LOADING -->
+<div id="loading-layer" style="display:none;position:fixed;inset:0;background:rgba(5,5,8,0.95);z-index:100;flex-direction:column;align-items:center;justify-content:center;gap:24px">
+  <div style="width:60px;height:60px;border:2px solid rgba(0,245,255,0.1);border-top-color:#00f5ff;border-radius:50%;animation:spin 1s linear infinite"></div>
+  <p style="font-family:'Rajdhani',sans-serif;font-size:16px;color:#00f5ff;text-transform:uppercase;letter-spacing:0.5em">Analyzing Market...</p>
+</div>
+
+<script>
 const API = 'https://stocksignal-backend-mcfs.onrender.com';
 let currentSymbol = 'AAPL';
 let watchlist = JSON.parse(localStorage.getItem('watchlist') || '["AAPL","TSLA"]');
 
 async function fetchStock(symbol) {
   currentSymbol = symbol;
-  document.getElementById('verdict').innerText = 'ANALYZING...';
+  document.getElementById('verdict').innerText = '...';
   document.getElementById('verdict').style.color = '#00f5ff';
   document.getElementById('price').innerText = '...';
   try {
     const res = await fetch(`${API}/predict?symbol=${encodeURIComponent(symbol)}`);
     const d = await res.json();
-    if (d.error) return;
+    if (d.error) { document.getElementById('verdict').innerText = 'ERROR'; return; }
     const cur = symbol.includes('.NS') ? '₹' : '$';
-    document.getElementById('stockName').innerHTML = `${d.company} <span style="color:#00f5ff;font-size:1.2rem">(${d.symbol})</span>`;
+    document.getElementById('stockName').innerHTML = `${d.company} <span style="color:#00f5ff;font-size:1.2rem;font-style:normal;font-family:'Share Tech Mono',monospace">(${d.symbol})</span>`;
     document.getElementById('price').innerText = cur + d.price;
     const verdict = document.getElementById('verdict');
     verdict.innerText = d.prediction;
     verdict.style.color = d.prediction==='BUY' ? '#00ff41' : d.prediction==='SELL' ? '#ff003c' : '#ffcc00';
     document.getElementById('confidence').innerText = d.confidence + '%';
     document.getElementById('confidenceBar').style.width = d.confidence + '%';
-    const regimeEl = document.getElementById('regime');
-    if (regimeEl) { regimeEl.innerText = d.regime || '-'; regimeEl.style.color = d.regime==='TREND_UP' ? '#00ff41' : d.regime==='TREND_DOWN' ? '#ff003c' : '#ffcc00'; }
-    const tp = d.trade_plan || {};
-    document.getElementById('entry').innerText    = (tp.entry    && tp.entry    !== '-') ? cur + Number(tp.entry).toFixed(2)     : 'HOLD';
-    document.getElementById('stopLoss').innerText = (tp.stop_loss && tp.stop_loss !== '-') ? cur + Number(tp.stop_loss).toFixed(2) : 'HOLD';
-    document.getElementById('target').innerText   = (tp.target   && tp.target   !== '-') ? cur + Number(tp.target).toFixed(2)    : 'HOLD';
-    document.getElementById('rr').innerText       = (tp.risk_reward && tp.risk_reward !== '-') ? '1:' + tp.risk_reward            : '-';   
+    const re = document.getElementById('regime');
+    if (re) { re.innerText = d.regime||'-'; re.style.color = d.regime==='TREND_UP'?'#00ff41':d.regime==='TREND_DOWN'?'#ff003c':'#ffcc00'; }
+    const m = d.models||{};
+    document.getElementById('modelPills').innerHTML = [['DT',m.decision_tree],['RF',m.random_forest],['LR',m.logistic],['XGB',m.xgboost]].map(([k,v])=>
+      `<span style="padding:4px 10px;background:rgba(255,255,255,0.05);font-size:10px;font-family:'Share Tech Mono',monospace;border:1px solid rgba(255,255,255,0.1);border-radius:2px;color:${v==='BUY'?'#00ff41':'#ff003c'}">${k}:${v==='BUY'?'BULL':'BEAR'}</span>`
+    ).join('') + `<span style="padding:4px 12px;background:rgba(0,245,255,0.08);font-size:10px;font-family:'Share Tech Mono',monospace;border:1px solid rgba(0,245,255,0.25);border-radius:2px;color:#00f5ff;font-weight:700;margin-left:8px">${d.confidence_breakdown?.agreement||''}</span>`;
+    const tp = d.trade_plan||{};
+    document.getElementById('entry').innerText    = (tp.entry    && tp.entry    !=='-') ? cur+Number(tp.entry).toFixed(2)     : 'HOLD';
+    document.getElementById('stopLoss').innerText = (tp.stop_loss && tp.stop_loss!=='-') ? cur+Number(tp.stop_loss).toFixed(2) : 'HOLD';
+    document.getElementById('target').innerText   = (tp.target   && tp.target   !=='-') ? cur+Number(tp.target).toFixed(2)    : 'HOLD';
+    document.getElementById('rr').innerText       = (tp.risk_reward && tp.risk_reward!=='-') ? '1:'+tp.risk_reward : '—';
     const sigEl = document.getElementById('signals');
-    if (sigEl && d.signals) {
-      sigEl.innerHTML = d.signals.map(s => {
-        const color = s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? '#00ff41' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? '#ff003c' : '#ffcc00';
-        return `<li style="display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid rgba(255,255,255,0.05);border-radius:4px;margin-bottom:8px;border-left:3px solid ${color}">
-          <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.8)">${s}</span>
-          <span style="font-size:10px;font-family:monospace;font-weight:bold;color:${color}">${s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? 'BUY' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? 'SELL' : 'NEUTRAL'}</span>
-        </li>`;
-      }).join('');
-    }
-    const aiEl = document.getElementById('aiAnalysis');
-    if (aiEl) aiEl.innerText = d.ai_analysis || 'No analysis available.';
-    const chartEl = document.getElementById('chart');
-    if (chartEl) chartEl.innerHTML = `<iframe src="https://s.tradingview.com/widgetembed/?symbol=${symbol}&interval=D&theme=dark&hide_side_toolbar=0&allow_symbol_change=1" width="100%" height="100%" frameborder="0" style="min-height:500px;display:block;"></iframe>`;
+    if (sigEl && d.signals) sigEl.innerHTML = d.signals.map(s => {
+      const c = s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? '#00ff41' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? '#ff003c' : '#ffcc00';
+      const lbl = s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? 'BUY' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? 'SELL' : 'NEUTRAL';
+      return `<li style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid rgba(255,255,255,0.05);border-left:3px solid ${c};border-radius:0 4px 4px 0"><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.8)">${s}</span><span style="font-size:10px;font-family:'Share Tech Mono',monospace;font-weight:700;color:${c}">${lbl}</span></li>`;
+    }).join('');
+    const ai = document.getElementById('aiAnalysis');
+    if (ai) ai.innerText = d.ai_analysis||'No analysis.';
+    document.getElementById('chart').innerHTML = `<iframe src="https://s.tradingview.com/widgetembed/?symbol=${symbol}&interval=D&theme=dark&allow_symbol_change=1" width="100%" height="460" frameborder="0" style="display:block"></iframe>`;
     renderWatchlist();
-  } catch(e) {
-    document.getElementById('verdict').innerText = 'ERROR';
-    document.getElementById('verdict').style.color = '#ff003c';
-    console.error(e);
-  }
+  } catch(e) { document.getElementById('verdict').innerText='ERROR'; document.getElementById('verdict').style.color='#ff003c'; console.error(e); }
 }
 
 async function searchStock(value) {
-  const dropdown = document.getElementById('dropdown');
-  if (!value) { dropdown.classList.add('hidden'); return; }
-  dropdown.classList.remove('hidden');
-  dropdown.innerHTML = `<div style="padding:12px;font-size:11px;font-family:monospace;color:rgba(255,255,255,0.3)">Searching...</div>`;
+  const dd = document.getElementById('dropdown');
+  if (!value) { dd.classList.remove('show'); return; }
+  dd.classList.add('show');
+  dd.innerHTML = `<div style="padding:12px;font-size:11px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.3)">Searching...</div>`;
   try {
     const res = await fetch(`${API}/search?query=${encodeURIComponent(value)}`);
     const data = await res.json();
-    if (!data.length) { dropdown.innerHTML = `<div style="padding:12px;font-size:11px;font-family:monospace;color:rgba(255,255,255,0.3)">No results</div>`; return; }
-    dropdown.innerHTML = data.map(s => `
-      <div onclick="selectStock('${s.symbol}')" style="padding:10px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;transition:background 0.2s" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'">
-        <span style="font-size:12px;font-family:monospace;color:rgba(255,255,255,0.8)">${s.name}</span>
-        <span style="font-size:10px;font-family:monospace;color:#00f5ff">${s.symbol}</span>
-      </div>`).join('');
-  } catch(e) { dropdown.innerHTML = `<div style="padding:12px;color:#ff003c;font-size:11px">Search failed</div>`; }
+    if (!data.length) { dd.innerHTML = `<div style="padding:12px;color:rgba(255,255,255,0.3);font-size:11px">No results</div>`; return; }
+    dd.innerHTML = data.map(s=>`<div onclick="selectStock('${s.symbol}')" style="padding:10px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'"><span style="font-size:12px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.8)">${s.name}</span><span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:#00f5ff">${s.symbol}</span></div>`).join('');
+  } catch(e) { dd.innerHTML=`<div style="padding:12px;color:#ff003c;font-size:11px">Failed</div>`; }
 }
 
 function selectStock(symbol) {
   document.getElementById('searchInput').value = symbol;
-  document.getElementById('dropdown').classList.add('hidden');
+  document.getElementById('dropdown').classList.remove('show');
   fetchStock(symbol);
 }
 
 function addToWatchlist() {
   if (!watchlist.includes(currentSymbol)) {
-    watchlist.push(currentSymbol);
-    localStorage.setItem('watchlist', JSON.stringify(watchlist));
-    renderWatchlist();
-    alert(currentSymbol + ' added ✅');
-  } else { alert('Already in watchlist'); }
+    watchlist.push(currentSymbol); localStorage.setItem('watchlist',JSON.stringify(watchlist)); renderWatchlist(); alert(currentSymbol+' added ✅');
+  } else alert('Already in watchlist');
 }
 
 function removeFromWatchlist(symbol) {
-  watchlist = watchlist.filter(s => s !== symbol);
-  localStorage.setItem('watchlist', JSON.stringify(watchlist));
-  renderWatchlist();
+  watchlist = watchlist.filter(s=>s!==symbol); localStorage.setItem('watchlist',JSON.stringify(watchlist)); renderWatchlist();
 }
 
 function renderWatchlist() {
-  const nav  = document.getElementById('watchlistNav');
+  const nav = document.getElementById('watchlistNav');
   const side = document.getElementById('watchlistSidebar');
-  if (nav) nav.innerHTML = watchlist.map(s => `
-    <span style="display:flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(0,245,255,0.1);border:1px solid rgba(0,245,255,0.2);border-radius:4px;font-size:10px;font-family:monospace;color:#00f5ff">
-      <span onclick="fetchStock('${s}')" style="cursor:pointer">${s}</span>
-      <span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer;margin-left:4px">×</span>
-    </span>`).join('');
-  if (side) side.innerHTML = watchlist.map(s => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
-      <span onclick="fetchStock('${s}')" style="font-size:12px;font-family:monospace;color:white">${s}</span>
-      <span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer">×</span>
-    </div>`).join('');
+  if (nav) nav.innerHTML = watchlist.map(s=>`<span style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(0,245,255,0.08);border:1px solid rgba(0,245,255,0.2);border-radius:4px;font-size:10px;font-family:'Share Tech Mono',monospace;color:#00f5ff"><span onclick="fetchStock('${s}')" style="cursor:pointer">${s}</span><span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer">×</span></span>`).join('');
+  if (side) side.innerHTML = watchlist.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:4px;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'"><span onclick="fetchStock('${s}')" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:white">${s}</span><span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer;font-size:14px">×</span></div>`).join('');
 }
 
 async function loadBestStock() {
-  const loading = document.getElementById('loading-layer');
-  if (loading) loading.classList.remove('hidden');
-  try {
-    const res = await fetch(`${API}/top-opportunity`);
-    const data = await res.json();
-    const best = data.portfolio?.[0];
-    if (best) fetchStock(best.symbol);
-  } catch(e) { console.error(e); }
-  finally { if (loading) loading.classList.add('hidden'); }
+  const l=document.getElementById('loading-layer'); l.style.display='flex';
+  try { const res=await fetch(`${API}/top-opportunity`); const data=await res.json(); const best=data.portfolio?.[0]; if(best) await fetchStock(best.symbol); } catch(e){console.error(e);}
+  finally { l.style.display='none'; }
 }
 
 async function runBacktest() {
-  const el = document.getElementById('backtestResult');
-  if (el) el.innerHTML = `<div style="padding:8px;font-size:10px;font-family:monospace;color:#00f5ff">RUNNING...</div>`;
+  const el=document.getElementById('backtestResult');
+  el.innerHTML=`<div style="color:#00f5ff;padding:8px">RUNNING...</div>`;
   try {
-    const res = await fetch(`${API}/backtest?symbol=${currentSymbol}`);
-    const d = await res.json();
-    const cur = currentSymbol.includes('.NS') ? '₹' : '$';
-    if (el) el.innerHTML = `
-      <div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;font-size:10px;font-family:monospace;line-height:1.8">
-        <div style="color:#00f5ff">BACKTEST — ${currentSymbol}</div>
-        <div style="color:rgba(255,255,255,0.5)">ACCURACY: <span style="color:white">${d.accuracy}%</span></div>
-        <div style="color:rgba(255,255,255,0.5)">W: <span style="color:#00ff41">${d.wins}</span> L: <span style="color:#ff003c">${d.losses}</span></div>
-        <div style="color:rgba(255,255,255,0.5)">PROFIT: <span style="color:${d.profit>=0?'#00ff41':'#ff003c'}">${cur}${d.profit}</span></div>
-        <div style="color:rgba(255,255,255,0.5)">FINAL: <span style="color:#00f5ff">${cur}${d.final_capital}</span></div>
-      </div>`;
-  } catch(e) { if (el) el.innerHTML = `<div style="color:#ff003c;font-size:10px;font-family:monospace">FAILED</div>`; }
+    const res=await fetch(`${API}/backtest?symbol=${currentSymbol}`); const d=await res.json(); const cur=currentSymbol.includes('.NS')?'₹':'$';
+    el.innerHTML=`<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;line-height:1.9"><div style="color:#00f5ff;font-weight:700;margin-bottom:4px">BACKTEST — ${currentSymbol}</div><div style="color:rgba(255,255,255,0.5)">ACCURACY: <span style="color:white">${d.accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">W:<span style="color:#00ff41"> ${d.wins}</span> L:<span style="color:#ff003c"> ${d.losses}</span></div><div style="color:rgba(255,255,255,0.5)">PROFIT: <span style="color:${d.profit>=0?'#00ff41':'#ff003c'}">${cur}${d.profit}</span></div><div style="color:rgba(255,255,255,0.5)">FINAL: <span style="color:#00f5ff">${cur}${d.final_capital}</span></div></div>`;
+  } catch(e) { el.innerHTML=`<div style="color:#ff003c;padding:8px">FAILED</div>`; }
 }
 
 async function loadModelStats() {
-  const el = document.getElementById('modelStats');
-  if (el) el.innerHTML = `<div style="padding:8px;font-size:10px;font-family:monospace;color:#9d4edd">LOADING...</div>`;
+  const el=document.getElementById('modelStats');
+  el.innerHTML=`<div style="color:#9d4edd;padding:8px">LOADING...</div>`;
   try {
-    const res = await fetch(`${API}/model-stats?symbol=${currentSymbol}`);
-    const d = await res.json();
-    if (el) el.innerHTML = `
-      <div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;font-size:10px;font-family:monospace;line-height:1.8">
-        <div style="color:#9d4edd">MODEL ANALYSIS</div>
-        <div style="color:rgba(255,255,255,0.5)">DT:  <span style="color:white">${d.decision_tree_accuracy}%</span></div>
-        <div style="color:rgba(255,255,255,0.5)">RF:  <span style="color:white">${d.random_forest_accuracy}%</span></div>
-        <div style="color:rgba(255,255,255,0.5)">LR:  <span style="color:white">${d.logistic_accuracy}%</span></div>
-        <div style="color:rgba(255,255,255,0.5)">XGB: <span style="color:white">${d.xgboost_accuracy}%</span></div>
-      </div>`;
-  } catch(e) { if (el) el.innerHTML = `<div style="color:#ff003c;font-size:10px;font-family:monospace">FAILED</div>`; }
+    const res=await fetch(`${API}/model-stats?symbol=${currentSymbol}`); const d=await res.json();
+    el.innerHTML=`<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;line-height:1.9"><div style="color:#9d4edd;font-weight:700;margin-bottom:4px">MODEL STATS</div><div style="color:rgba(255,255,255,0.5)">DT: <span style="color:white">${d.decision_tree_accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">RF: <span style="color:white">${d.random_forest_accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">LR: <span style="color:white">${d.logistic_accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">XGB: <span style="color:white">${d.xgboost_accuracy}%</span></div></div>`;
+  } catch(e) { el.innerHTML=`<div style="color:#ff003c;padding:8px">FAILED</div>`; }
 }
 
 async function loadTopStocks() {
-  const el = document.getElementById('topStocks');
-  if (el) el.innerHTML = `<div style="padding:8px;font-size:10px;font-family:monospace;color:#00f5ff">SCANNING...</div>`;
+  const el=document.getElementById('topStocks');
+  el.innerHTML=`<div style="color:#00f5ff;padding:8px">SCANNING...</div>`;
   try {
-    const res = await fetch(`${API}/top-opportunity`);
-    const data = await res.json();
-    if (el) el.innerHTML = (data.portfolio||[]).map(s => `
-      <div onclick="fetchStock('${s.symbol}')" style="padding:8px;cursor:pointer;display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.05)" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'">
-        <span style="font-size:11px;font-family:monospace;color:white">${s.symbol} <span style="color:${s.prediction==='BUY'?'#00ff41':'#ff003c'}">${s.prediction}</span></span>
-        <span style="font-size:11px;font-family:monospace;color:#00f5ff">${s.confidence}%</span>
-      </div>`).join('');
-  } catch(e) { if (el) el.innerHTML = `<div style="color:#ff003c;font-size:10px;font-family:monospace">FAILED</div>`; }
+    const res=await fetch(`${API}/top-opportunity`); const data=await res.json();
+    el.innerHTML=(data.portfolio||[]).map(s=>`<div onclick="fetchStock('${s.symbol}')" style="padding:8px;cursor:pointer;display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.05)" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'"><span style="color:white">${s.symbol} <span style="color:${s.prediction==='BUY'?'#00ff41':'#ff003c'}">${s.prediction}</span></span><span style="color:#00f5ff">${s.confidence}%</span></div>`).join('');
+  } catch(e) { el.innerHTML=`<div style="color:#ff003c;padding:8px">FAILED</div>`; }
 }
 
-document.addEventListener('click', (e) => {
-  const dropdown = document.getElementById('dropdown');
-  const searchInput = document.getElementById('searchInput');
-  if (dropdown && !dropdown.contains(e.target) && e.target !== searchInput) dropdown.classList.add('hidden');
+document.addEventListener('click', e => {
+  const dd=document.getElementById('dropdown'); const si=document.getElementById('searchInput');
+  if (!dd.contains(e.target) && e.target!==si) dd.classList.remove('show');
 });
 
 renderWatchlist();
 fetchStock('AAPL');
 </script>
-
-</body></html>
+</body>
+</html>
