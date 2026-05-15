@@ -94,6 +94,31 @@ def prepare_features(df):
     df["vol_ma20"] = df["Volume"].rolling(20).mean() if "Volume" in df.columns else 1e9
     df["vol_ratio"] = df["Volume"] / df["vol_ma20"] if "Volume" in df.columns else 1.0
 
+    # Money Flow Index — Davey Entry #23
+    # Combines price + volume — detects institutional activity
+    if "Volume" in df.columns:
+        typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
+        raw_money_flow = typical_price * df["Volume"]
+        pos_flow = raw_money_flow.where(typical_price > typical_price.shift(1), 0)
+        neg_flow = raw_money_flow.where(typical_price < typical_price.shift(1), 0)
+        pos_sum = pos_flow.rolling(14).sum()
+        neg_sum = neg_flow.rolling(14).sum()
+        mfi_ratio = pos_sum / neg_sum.replace(0, np.nan)
+        df["MFI"] = 100 - (100 / (1 + mfi_ratio))
+    else:
+        df["MFI"] = 50.0
+
+    # Stochastic Oscillator — Davey Entry #24
+    lowest_14  = df["Low"].rolling(14).min()
+    highest_14 = df["High"].rolling(14).max()
+    df["stoch_k"] = 100 * (df["Close"] - lowest_14) / (highest_14 - lowest_14).replace(0, np.nan)
+    df["stoch_d"] = df["stoch_k"].rolling(3).mean()
+
+    # Range Contraction Filter — Davey Entry #41
+    # Yesterday range < 2 days ago range = market compressing before breakout
+    df["daily_range"]     = df["High"] - df["Low"]
+    df["range_contracting"] = df["daily_range"] < df["daily_range"].shift(1)
+
     # Volume breakout — Davey Entry #1
     # Strong breakouts need volume 1.5x above average
     df["vol_breakout"] = df["vol_ratio"] > 1.5
@@ -122,7 +147,21 @@ def prepare_features(df):
     return df
 
 @app.on_event("startup")
-def train_model():
+def load_models():
+    global dt_model, rf_model, lr_model, xgb_model, scaler, explainer
+
+    try:
+        dt_model  = joblib.load("dt.pkl")
+        rf_model  = joblib.load("rf.pkl")
+        lr_model  = joblib.load("lr.pkl")
+        xgb_model = joblib.load("xgb.pkl")
+        scaler    = joblib.load("scaler.pkl")
+        print("✅ Pre-trained models loaded")
+    except Exception as e:
+        print(f"No saved models found, training now: {e}")
+        _train_from_scratch()
+
+def _train_from_scratch():
     global dt_model, rf_model, lr_model, xgb_model, scaler, explainer
     symbols = [
         "AAPL","TSLA","MSFT","GOOGL","AMZN",
@@ -142,37 +181,30 @@ def train_model():
                 all_data.append(df)
         except Exception as e:
             print(f"Skipped {s}: {e}")
-            continue
-
     if not all_data:
         print("No training data"); return
-
     df = pd.concat(all_data, ignore_index=True)
     df["Close"] = df["Close"].astype(float)
     df["target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
     df.dropna(subset=["target"], inplace=True)
-
     X = df[["RSI","MA20","MA50","momentum","volatility"]]
     y = df["target"]
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X_scaled = X_scaled[:-1]; y = y[:-1]
-
     dt_model  = DecisionTreeClassifier(max_depth=5, random_state=42)
     rf_model  = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
     lr_model  = LogisticRegression(max_iter=1000, random_state=42)
     xgb_model = XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.1,
                                subsample=0.8, colsample_bytree=0.8,
                                eval_metric="logloss", random_state=42, verbosity=0)
-
     for m in [dt_model, rf_model, lr_model, xgb_model]:
         m.fit(X_scaled, y)
-
     explainer = shap.TreeExplainer(xgb_model)
     joblib.dump(dt_model,"dt.pkl"); joblib.dump(rf_model,"rf.pkl")
     joblib.dump(lr_model,"lr.pkl"); joblib.dump(xgb_model,"xgb.pkl")
     joblib.dump(scaler,"scaler.pkl")
-    print("ALL MODELS TRAINED — v2 Davey Edition")
+    print("✅ Models trained and saved")
 
 @app.get("/search")
 def search_stock(query: str):
@@ -250,6 +282,13 @@ def predict(symbol: str = Query("AAPL")):
     close_pct_rank= float(latest.get("close_pct_rank", 0.5))
     vol_ratio     = float(latest.get("vol_ratio", 1.0))
     vol_breakout      = bool(latest.get("vol_breakout", False))
+    mfi = float(latest.get("MFI", 50))
+    mfi_oversold   = mfi < 20   # institutional buying pressurej
+    stoch_k = float(latest.get("stoch_k", 50))
+    stoch_d = float(latest.get("stoch_d", 50))
+    stoch_oversold   = stoch_k < 20 and stoch_d < 20
+    stoch_overbought = stoch_k > 80 and stoch_d > 80
+    mfi_overbought = mfi > 80   # institutional selling pressure
     adx_rising        = bool(latest.get("ADX_rising", True))
     bearish_divergence = bool(latest.get("bearish_divergence", False))
     bullish_divergence = bool(latest.get("bullish_divergence", False))
@@ -329,11 +368,19 @@ def predict(symbol: str = Query("AAPL")):
             position_tracker[symbol]["peak_profit"] = peak_profit
 
     # Don't Give It All Back — exit if gave back >50% of peak profit
-    gave_back_too_much = (
-        peak_profit > 0 and
-        current_profit < peak_profit * 0.5 and
-        bars_held > 3
-    )
+    # Tiered Profit Protection — Davey Exit #11
+    # As profit grows, protect more of it
+    if peak_profit <= 0:
+        gave_back_too_much = False
+    elif peak_profit < atr * 1.0:
+        # Small profit: protect 40%
+        gave_back_too_much = current_profit < peak_profit * 0.40 and bars_held > 3
+    elif peak_profit < atr * 2.0:
+        # Medium profit: protect 60%
+        gave_back_too_much = current_profit < peak_profit * 0.60 and bars_held > 3
+    else:
+        # Large profit: protect 80%
+        gave_back_too_much = current_profit < peak_profit * 0.80 and bars_held > 3
 
     timed_exit_triggered = bars_held >= 10
 
@@ -385,6 +432,15 @@ def predict(symbol: str = Query("AAPL")):
     else:           signals.append("RSI Neutral")
     if momentum > 0: signals.append("Momentum Positive"); score += 1
     else:            signals.append("Momentum Negative"); score -= 1
+    if mfi_oversold:
+        signals.append(f"MFI Oversold {mfi:.1f} — Institutional Buying [Davey #23]"); score += 2
+    elif mfi_overbought:
+        signals.append(f"MFI Overbought {mfi:.1f} — Institutional Selling [Davey #23]"); score -= 2
+
+    if stoch_oversold:
+        signals.append(f"Stochastic Oversold {stoch_k:.1f} — Buy Zone [Davey #24]"); score += 1
+    elif stoch_overbought:
+        signals.append(f"Stochastic Overbought {stoch_k:.1f} — Sell Zone [Davey #24]"); score -= 1
 
     # Davey signals
     if adx_flat:      signals.append(f"ADX Low {adx:.1f} — Breakout Setup [Davey #4]"); score += 1
@@ -440,7 +496,7 @@ def predict(symbol: str = Query("AAPL")):
         if regime == "TREND_UP":
             buy = False
             # A: Breakout + ADX + ATR + Volume (Davey #1 + #4 + #5)
-            if valid_breakout_up and (adx_flat or adx_trending) and atr_breakout_up and vol_breakout: buy = True
+            if valid_breakout_up and (adx_flat or adx_trending) and atr_breakout_up and vol_breakout and range_contracting: buy = True
             # B: Three Amigos + ADX Rising (Davey #27 + #8)
             if three_amigos_buy and score_ml >= 0.5 and adx_rising: buy = True
             # C: Quick Pullback (Davey #32)
@@ -462,12 +518,12 @@ def predict(symbol: str = Query("AAPL")):
             if sell: prediction = "SELL"
 
         elif regime == "RANGE":
-            # Bollinger + RSI double confirmation (Davey #25)
-            if rsi < 30 and bb_oversold:    prediction = "BUY"
+            if (rsi < 30 or bb_oversold) and mfi_oversold:   prediction = "BUY"
+            elif (rsi > 70 or bb_overbought) and mfi_overbought: prediction = "SELL"
+            elif rsi < 30 and bb_oversold:  prediction = "BUY"
             elif rsi > 70 and bb_overbought: prediction = "SELL"
             elif rsi < 30:                  prediction = "BUY"
             elif rsi > 70:                  prediction = "SELL"
-
         # Exit overrides
         if prediction == "BUY"  and three_down_closes: prediction = "HOLD"
         if prediction == "SELL" and three_up_closes:   prediction = "HOLD"
@@ -484,13 +540,34 @@ def predict(symbol: str = Query("AAPL")):
     if volatility < 0.005: prediction = "HOLD"
     if prediction == "BUY"  and sentiment_score < -0.2: prediction = "HOLD"
     if prediction == "SELL" and sentiment_score >  0.2: prediction = "HOLD"
-    if last_trade_time and datetime.now() - last_trade_time < timedelta(minutes=30):
-        prediction = "HOLD"
+
+    # Serial Correlation — Davey Entry #16
+    # Swing trading needs days not minutes between trades
+    # After loss: wait 5 days. After win: wait 2 days.
+    last_trade = position_tracker.get("_last_trade", {})
+    last_trade_result = last_trade.get("result", "none")
+    last_trade_date   = last_trade.get("date", None)
+
+    if last_trade_date:
+        days_since = (datetime.now() - last_trade_date).days
+        wait_days = 5 if last_trade_result == "loss" else 2
+        if days_since < wait_days:
+            prediction = "HOLD"
 
     # Update position tracker
     if prediction in ("BUY","SELL"):
         last_trade_time = datetime.now()
-        position_tracker[symbol] = {"bars_held": 0, "entry_price": price, "direction": prediction}
+        position_tracker[symbol] = {
+            "bars_held":   0,
+            "entry_price": price,
+            "direction":   prediction,
+            "peak_profit": 0.0,
+        }
+        position_tracker["_last_trade"] = {
+            "date":   datetime.now(),
+            "result": "win",   # updated when position closes
+            "symbol": symbol,
+        }
     elif symbol in position_tracker:
         position_tracker[symbol]["bars_held"] += 1
 
@@ -571,6 +648,7 @@ def predict(symbol: str = Query("AAPL")):
             "three_up_closes": three_up_closes, "three_down_closes": three_down_closes,
             "timed_exit": timed_exit_triggered, "bars_held": bars_held,
             "liquid": liquid, "vol_ratio": round(vol_ratio,2),
+            "trailing_stop": round(price - (2.0 * atr), 2) if prediction == "BUY" else round(price + (2.0 * atr), 2) if prediction == "SELL" else "-",
         },
         "models": {"decision_tree": "BUY" if dt_pred==1 else "SELL",
                    "random_forest": "BUY" if rf_pred==1 else "SELL",
