@@ -161,6 +161,13 @@ def prepare_features(df):
     df["close_pct_rank"] = df["Close"].rolling(5).apply(
         lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False
     )
+    # Correlation Z-Score — Aldridge Chapter 13 Statistical Arbitrage
+    # Measures how far price has deviated from its own 20-day mean
+    # Z-score > 2 = overbought relative to recent self
+    # Z-score < -2 = oversold relative to recent self
+    rolling_mean = df["Close"].rolling(20).mean()
+    rolling_std  = df["Close"].rolling(20).std()
+    df["zscore"] = (df["Close"] - rolling_mean) / rolling_std.replace(0, np.nan)
 
     df.dropna(inplace=True)
     return df
@@ -302,6 +309,10 @@ def predict(symbol: str = Query("AAPL")):
     vol_ratio     = float(latest.get("vol_ratio", 1.0))
     vol_breakout      = bool(latest.get("vol_breakout", False))
     range_contracting = bool(latest.get("range_contracting", False))
+    # Z-Score — Aldridge Statistical Arbitrage
+    zscore = float(latest.get("zscore", 0))
+    zscore_oversold   = zscore < -2.0   # price far below own mean = mean reversion buy
+    zscore_overbought = zscore > 2.0    # price far above own mean = mean reversion sell
     bull_tail_bar     = bool(latest.get("bull_tail_bar", False))
     bear_tail_bar     = bool(latest.get("bear_tail_bar", False))
     mfi = float(latest.get("MFI", 50))
@@ -481,6 +492,10 @@ def predict(symbol: str = Query("AAPL")):
     if not liquid:    signals.append("LOW LIQUIDITY — Volume below average"); score -= 1
     if range_contracting:
         signals.append("Range Contracting — Breakout Setup [Davey #41]"); score += 1
+    if zscore_oversold:
+        signals.append(f"Z-Score Oversold {zscore:.2f} — Mean Reversion Setup [Aldridge]"); score += 2
+    elif zscore_overbought:
+        signals.append(f"Z-Score Overbought {zscore:.2f} — Mean Reversion Setup [Aldridge]"); score -= 2
     if bull_tail_bar:
         signals.append("Bull Tail Bar — Institutional Rejection [Davey #36]"); score += 2
     if bear_tail_bar:
@@ -554,6 +569,8 @@ def predict(symbol: str = Query("AAPL")):
             elif rsi > 70 and bb_overbought: prediction = "SELL"
             elif rsi < 30:                  prediction = "BUY"
             elif rsi > 70:                  prediction = "SELL"
+            elif zscore_oversold and rsi < 40:   prediction = "BUY"
+            elif zscore_overbought and rsi > 60: prediction = "SELL"
         # Exit overrides
         if prediction == "BUY"  and three_down_closes: prediction = "HOLD"
         if prediction == "SELL" and three_up_closes:   prediction = "HOLD"
@@ -741,12 +758,21 @@ def backtest(symbol: str = "AAPL"):
         actual = 1 if nxt > cur else 0
         if pred == actual: wins += 1
         else: losses += 1
-        change = (nxt-cur)/cur if pred==1 else (cur-nxt)/cur
+        slippage = 0.002  # 0.2% per trade — from Aldridge Chapter 19
+        if pred == 1:
+            entry_p = cur * (1 + slippage)
+            exit_p  = nxt * (1 - slippage)
+            change  = (exit_p - entry_p) / entry_p
+        else:
+            entry_p = cur * (1 - slippage)
+            exit_p  = nxt * (1 + slippage)
+            change  = (entry_p - exit_p) / entry_p
         profit += 1000 * change
     total = wins + losses
     return {"symbol": symbol, "accuracy": round(wins/total*100,2) if total else 0,
             "total_trades": total, "wins": wins, "losses": losses,
-            "profit": round(profit,2), "final_capital": round(10000+profit,2)}
+            "profit": round(profit,2), "final_capital": round(10000+profit,2),
+            "sharpe_benchmark": "Target > 1.0 (yours: " + str(round(profit / (1000 * total) / 0.02, 2) if total else 0) + ")"}
 
 @app.get("/simulate-profit")
 def simulate_profit(symbol: str = "AAPL"):
