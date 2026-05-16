@@ -123,6 +123,25 @@ def prepare_features(df):
     # Strong breakouts need volume 1.5x above average
     df["vol_breakout"] = df["vol_ratio"] > 1.5
 
+    # Range Contraction — Davey Entry #41
+    df["daily_range"]       = df["High"] - df["Low"]
+    df["range_contracting"] = df["daily_range"] < df["daily_range"].shift(1)
+
+    # Big Tail Bars — Davey Entry #36
+    bar_range  = df["High"] - df["Low"]
+    lower_tail = df["Close"] - df["Low"]
+    upper_tail = df["High"] - df["Close"]
+    df["bull_tail_bar"] = (
+        (lower_tail > bar_range * 0.6) &
+        (df["High"] >= df["High"].shift(1)) &
+        (df["Close"] > df["Open"])
+    )
+    df["bear_tail_bar"] = (
+        (upper_tail > bar_range * 0.6) &
+        (df["Low"]  <= df["Low"].shift(1)) &
+        (df["Close"] < df["Open"])
+    )
+
     # RSI Divergence — Davey Entry #12
     # Price new high but RSI lower high = bearish divergence (sell signal)
     # Price new low but RSI higher low = bullish divergence (buy signal)
@@ -282,6 +301,9 @@ def predict(symbol: str = Query("AAPL")):
     close_pct_rank= float(latest.get("close_pct_rank", 0.5))
     vol_ratio     = float(latest.get("vol_ratio", 1.0))
     vol_breakout      = bool(latest.get("vol_breakout", False))
+    range_contracting = bool(latest.get("range_contracting", False))
+    bull_tail_bar     = bool(latest.get("bull_tail_bar", False))
+    bear_tail_bar     = bool(latest.get("bear_tail_bar", False))
     mfi = float(latest.get("MFI", 50))
     mfi_oversold   = mfi < 20   # institutional buying pressurej
     stoch_k = float(latest.get("stoch_k", 50))
@@ -457,6 +479,12 @@ def predict(symbol: str = Query("AAPL")):
     if atr_breakout_up: signals.append("ATR Significant Breakout UP [Davey #5]"); score += 1
     elif atr_breakout_dn: signals.append("ATR Significant Breakout DOWN [Davey #5]"); score -= 1
     if not liquid:    signals.append("LOW LIQUIDITY — Volume below average"); score -= 1
+    if range_contracting:
+        signals.append("Range Contracting — Breakout Setup [Davey #41]"); score += 1
+    if bull_tail_bar:
+        signals.append("Bull Tail Bar — Institutional Rejection [Davey #36]"); score += 2
+    if bear_tail_bar:
+        signals.append("Bear Tail Bar — Distribution Signal [Davey #36]"); score -= 2
     if three_up_closes:   signals.append("⚠️ 3 Consecutive Up Closes — Exit Signal [Davey #6]")
     if three_down_closes: signals.append("⚠️ 3 Consecutive Down Closes — Exit Signal [Davey #6]")
     if timed_exit_triggered: signals.append(f"⚠️ Held {bars_held} days — Timed Exit [Davey #3]")
@@ -505,6 +533,8 @@ def predict(symbol: str = Query("AAPL")):
             if new_high_confirm and score_ml >= 0.6 and vol_breakout: buy = True
             # E: Bullish divergence — strong reversal signal (Davey #12)
             if bullish_divergence and score_ml >= 0.5: buy = True
+            # F: Bull Tail Bar (Davey #36)
+            if bull_tail_bar and score_ml >= 0.5: buy = True
             if buy: prediction = "BUY"
 
         elif regime == "TREND_DOWN":
