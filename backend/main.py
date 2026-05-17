@@ -51,8 +51,16 @@ def prepare_features(df):
     df.dropna(subset=["Close"], inplace=True)
 
     # ── Basic indicators ───────────────────────────────────────────────
-    df["MA20"] = df["Close"].rolling(20).mean()
-    df["MA50"] = df["Close"].rolling(50).mean()
+    df["MA20"]  = df["Close"].rolling(20).mean()
+    df["MA50"]  = df["Close"].rolling(50).mean()
+    df["MA150"] = df["Close"].rolling(150).mean()
+    df["MA200"] = df["Close"].rolling(200).mean()
+    # MA200 trend — is it rising over last 21 days
+    df["MA200_rising"] = df["MA200"] > df["MA200"].shift(21)
+    # 52-week low for Minervini condition 6
+    df["low_52w"]           = df["Low"].rolling(252).min()
+    df["pct_from_52w_low"]  = (df["Close"] - df["low_52w"]) / df["low_52w"] * 100
+    df["above_30pct_52w_low"] = df["pct_from_52w_low"] >= 30
     delta = df["Close"].diff()
     gain  = delta.clip(lower=0).rolling(14).mean()
     loss  = (-delta.clip(upper=0)).rolling(14).mean()
@@ -156,6 +164,53 @@ def prepare_features(df):
 
     # ── O'Neil CANSLIM — L: Leader ────────────────────────────────────
     df["is_leader"] = (df["Close"] > df["MA50"]) & (df["momentum"] > 0)
+
+    # ── Minervini Trend Template — all 8 conditions ───────────────────
+    df["tt1"] = df["Close"] > df["MA150"]                          # above 150MA
+    df["tt2"] = df["Close"] > df["MA200"]                          # above 200MA
+    df["tt3"] = df["MA150"] > df["MA200"]                          # 150 above 200
+    df["tt4"] = df["MA200_rising"]                                  # 200MA trending up
+    df["tt5"] = df["MA50"]  > df["MA150"]                          # 50 above 150
+    df["tt6"] = df["MA50"]  > df["MA200"]                          # 50 above 200
+    df["tt7"] = df["Close"] > df["MA50"]                           # price above 50MA
+    df["tt8"] = df["above_30pct_52w_low"]                          # 30%+ above 52w low
+    df["tt9"] = df["pct_from_52w_high"] > -25                      # within 25% of 52w high
+    # All 8 conditions = confirmed Stage 2 uptrend
+    df["trend_template"] = (
+        df["tt1"] & df["tt2"] & df["tt3"] & df["tt4"] &
+        df["tt5"] & df["tt6"] & df["tt7"] & df["tt8"] & df["tt9"]
+    )
+    # Count how many conditions pass (0-9)
+    df["trend_score"] = (
+        df["tt1"].astype(int) + df["tt2"].astype(int) +
+        df["tt3"].astype(int) + df["tt4"].astype(int) +
+        df["tt5"].astype(int) + df["tt6"].astype(int) +
+        df["tt7"].astype(int) + df["tt8"].astype(int) +
+        df["tt9"].astype(int)
+    )
+
+    # ── Weinstein Stage Analysis ──────────────────────────────────────
+    # Stage 2 = price above rising 30-week (150-day) MA
+    df["weinstein_stage2"] = (
+        (df["Close"] > df["MA150"]) &
+        (df["MA150"] > df["MA150"].shift(10))  # MA150 rising
+    )
+    # Stage 4 = price below falling MA150 — never buy
+    df["weinstein_stage4"] = (
+        (df["Close"] < df["MA150"]) &
+        (df["MA150"] < df["MA150"].shift(10))
+    )
+
+    # ── VCP — Volatility Contraction Pattern (Minervini) ─────────────
+    # Range contracting = current 5-day range < 50% of 20-day range
+    df["range_5d"]  = df["High"].rolling(5).max()  - df["Low"].rolling(5).min()
+    df["range_20d"] = df["High"].rolling(20).max() - df["Low"].rolling(20).min()
+    df["vcp_contracting"] = df["range_5d"] < (df["range_20d"] * 0.5)
+    # Volume drying up at pivot = volume below 50-day average
+    df["vol_ma50"] = df["Volume"].rolling(50).mean() if "Volume" in df.columns else 1e9
+    df["vol_dry"]  = df["Volume"] < df["vol_ma50"]   if "Volume" in df.columns else False
+    # VCP confirmed = range contracting AND volume drying up
+    df["vcp_setup"] = df["vcp_contracting"] & df["vol_dry"]
 
     # ── O'Neil CANSLIM — I: Institutional Sponsorship proxy ───────────
     if "Volume" in df.columns:
@@ -347,6 +402,31 @@ def predict(symbol: str = Query("AAPL")):
 
     # ── O'Neil indicators ──────────────────────────────────────────────
     is_leader          = bool(latest.get("is_leader", False))
+    # ── Minervini Trend Template ──────────────────────────────────────
+    trend_template   = bool(latest.get("trend_template", False))
+    trend_score      = int(latest.get("trend_score", 0))
+    tt1 = bool(latest.get("tt1", False))
+    tt2 = bool(latest.get("tt2", False))
+    tt3 = bool(latest.get("tt3", False))
+    tt4 = bool(latest.get("tt4", False))
+    tt5 = bool(latest.get("tt5", False))
+    tt6 = bool(latest.get("tt6", False))
+    tt7 = bool(latest.get("tt7", False))
+    tt8 = bool(latest.get("tt8", False))
+    tt9 = bool(latest.get("tt9", False))
+
+    # ── Weinstein Stage ───────────────────────────────────────────────
+    weinstein_stage2 = bool(latest.get("weinstein_stage2", False))
+    weinstein_stage4 = bool(latest.get("weinstein_stage4", False))
+
+    # ── VCP ───────────────────────────────────────────────────────────
+    vcp_setup        = bool(latest.get("vcp_setup", False))
+    vcp_contracting  = bool(latest.get("vcp_contracting", False))
+    vol_dry          = bool(latest.get("vol_dry", False))
+
+    # ── MA values ─────────────────────────────────────────────────────
+    ma150 = float(latest.get("MA150", ma50))
+    ma200 = float(latest.get("MA200", ma50))
     accum_days         = float(latest.get("accum_days", 10))
     distrib_days       = float(latest.get("distrib_days", 10))
     institutional_buying = bool(latest.get("institutional_buying", False))
@@ -559,7 +639,27 @@ def predict(symbol: str = Query("AAPL")):
     if near_52w_high:      signals.append(f"Near 52W High ({pct_from_52w:.1f}%) [O'Neil N]"); score += 1
     else:                  signals.append(f"Far from 52W High ({pct_from_52w:.1f}%) — Avoid [O'Neil]"); score -= 1
     if is_leader:          signals.append("Outperforming Market — Leader [O'Neil L]"); score += 1
+    # Minervini Trend Template signals
+    if trend_template:
+        signals.append(f"✅ Minervini Trend Template — ALL 8 CONDITIONS MET [{trend_score}/9]"); score += 4
+    elif trend_score >= 6:
+        signals.append(f"Trend Template Partial — {trend_score}/9 conditions [Minervini]"); score += 2
+    elif trend_score >= 4:
+        signals.append(f"Trend Template Weak — {trend_score}/9 conditions [Minervini]"); score += 0
+    else:
+        signals.append(f"❌ Trend Template FAILED — {trend_score}/9 [Minervini] — Avoid"); score -= 3
 
+    # Weinstein Stage
+    if weinstein_stage2:
+        signals.append("Stage 2 Uptrend — Weinstein Confirmed"); score += 2
+    if weinstein_stage4:
+        signals.append("⛔ Stage 4 Decline — Weinstein — Never Buy"); score -= 4
+
+    # VCP
+    if vcp_setup:
+        signals.append("VCP Setup — Volatility Contracting + Volume Drying [Minervini]"); score += 3
+    elif vcp_contracting:
+        signals.append("Range Contracting — Partial VCP [Minervini]"); score += 1
     # Exit signals
     if three_up_closes:      signals.append("⚠️ 3 Consecutive Up Closes — Exit Signal [Davey #6]")
     if three_down_closes:    signals.append("⚠️ 3 Consecutive Down Closes — Exit Signal [Davey #6]")
@@ -579,11 +679,19 @@ def predict(symbol: str = Query("AAPL")):
         prediction = "HOLD"
         position_tracker.pop(symbol, None)
 
-    # L2: ADX exhausted
+    # L2: ADX exhausted — no new entries
     elif adx_exhausted:
         prediction = "HOLD"
 
-    # L3: Liquidity
+    # L3: Weinstein Stage 4 — never buy declining stocks
+    elif weinstein_stage4:
+        prediction = "HOLD"
+
+    # L4: Minervini Trend Template — need at least 6/9 for any buy signal
+    elif trend_score < 6 and regime == "TREND_UP":
+        prediction = "HOLD"
+
+    # L5: Liquidity — skip illiquid stocks
     elif not liquid:
         prediction = "HOLD"
 
@@ -600,6 +708,8 @@ def predict(symbol: str = Query("AAPL")):
                 if new_high_confirm and score_ml >= 0.6 and vol_breakout: buy = True
                 if bullish_divergence and score_ml >= 0.5: buy = True
                 if bull_tail_bar and score_ml >= 0.5: buy = True
+                # G: VCP breakout — Minervini's highest probability setup
+                if vcp_setup and vol_breakout and trend_template: buy = True
                 if buy: prediction = "BUY"
 
         # ── TREND_DOWN ────────────────────────────────────────────────
@@ -762,6 +872,13 @@ def predict(symbol: str = Query("AAPL")):
             "market_top_warning": market_top_warning, "follow_through": follow_through,
             "institutional_buying": institutional_buying,
             "trailing_stop": round(price-(2.0*atr),2) if prediction=="BUY" else round(price+(2.0*atr),2) if prediction=="SELL" else "-",
+            "trend_template": trend_template,
+            "trend_score": f"{trend_score}/9",
+            "weinstein_stage2": weinstein_stage2,
+            "weinstein_stage4": weinstein_stage4,
+            "vcp_setup": vcp_setup,
+            "ma150": round(ma150, 2),
+            "ma200": round(ma200, 2),
         },
         "models": {"decision_tree": "BUY" if dt_pred==1 else "SELL",
                    "random_forest": "BUY" if rf_pred==1 else "SELL",
