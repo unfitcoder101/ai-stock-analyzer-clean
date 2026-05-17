@@ -26,8 +26,11 @@ body {
 #dropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 8px; background: #0d0d14; border: 1px solid #1a1a25; border-radius: 8px; max-height: 400px; overflow-y: auto; z-index: 100; display: none; }
 #dropdown.show { display: block; }
 .verdict-text { font-family: 'Rajdhani', sans-serif; font-size: 6rem; font-weight: 900; font-style: italic; letter-spacing: -0.05em; line-height: 1; }
+.mini-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 12px; }
+.mini-label { font-size: 9px; font-family: 'Share Tech Mono', monospace; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 6px; }
+.mini-val { font-size: 15px; font-weight: 700; font-family: 'Share Tech Mono', monospace; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes scan { 0% { top: -5%; } 100% { top: 105%; } }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 </style>
 </head>
 <body>
@@ -55,8 +58,11 @@ body {
     <button onclick="loadModelStats()" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;cursor:pointer;margin-bottom:4px" onmouseover="this.style.color='#00f5ff'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
       <span class="material-symbols-outlined" style="font-size:18px">analytics</span>Model Analysis
     </button>
-    <button onclick="runBacktest()" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;cursor:pointer;margin-bottom:20px" onmouseover="this.style.color='#00f5ff'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
+    <button onclick="runBacktest()" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;cursor:pointer;margin-bottom:4px" onmouseover="this.style.color='#00f5ff'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
       <span class="material-symbols-outlined" style="font-size:18px">history</span>Run Backtest
+    </button>
+    <button onclick="loadExpectancy()" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:transparent;border:none;color:rgba(255,255,255,0.3);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;cursor:pointer;margin-bottom:20px" onmouseover="this.style.color='#ffcc00'" onmouseout="this.style.color='rgba(255,255,255,0.3)'">
+      <span class="material-symbols-outlined" style="font-size:18px">calculate</span>Expectancy (Tharp)
     </button>
     <div style="padding:0 4px;margin-bottom:8px">
       <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.4em;margin-bottom:12px;padding:0 12px">Watchlist</div>
@@ -64,6 +70,7 @@ body {
     </div>
     <div id="backtestResult" style="padding:0 8px;margin-top:12px;font-size:10px;font-family:'Share Tech Mono',monospace"></div>
     <div id="modelStats" style="padding:0 8px;margin-top:8px;font-size:10px;font-family:'Share Tech Mono',monospace"></div>
+    <div id="expectancyResult" style="padding:0 8px;margin-top:8px;font-size:10px;font-family:'Share Tech Mono',monospace"></div>
     <div id="topStocks" style="padding:0 8px;margin-top:8px;font-size:10px;font-family:'Share Tech Mono',monospace"></div>
   </nav>
 </aside>
@@ -74,7 +81,7 @@ body {
     <span class="material-symbols-outlined" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:rgba(0,245,255,0.4);font-size:18px;z-index:1">search</span>
     <input id="searchInput" onkeyup="searchStock(this.value)"
       style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px 10px 40px;font-size:11px;font-family:'Share Tech Mono',monospace;color:white;outline:none;text-transform:uppercase;letter-spacing:0.1em"
-      placeholder="SEARCH (AAPL, TSLA, RELIANCE.NS)..."
+      placeholder="SEARCH SYMBOL..."
       onfocus="this.style.borderColor='rgba(0,245,255,0.4)'"
       onblur="this.style.borderColor='rgba(255,255,255,0.1)'"/>
     <div id="dropdown"></div>
@@ -100,7 +107,6 @@ body {
 
     <!-- ROW 1: Hero + Trade Plan -->
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px">
-
       <!-- Hero -->
       <div class="cyber-panel" style="padding:40px;border-radius:12px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
@@ -155,7 +161,97 @@ body {
       </div>
     </div>
 
-    <!-- ROW 2: Chart + Signals -->
+    <!-- ROW 2: Stage + Trend Template -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+
+      <!-- Weinstein + Elder -->
+      <div class="cyber-panel" style="padding:24px;border-radius:12px">
+        <h3 style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:rgba(255,255,255,0.7);margin-bottom:20px;display:flex;align-items:center;gap:8px">
+          <span class="material-symbols-outlined" style="color:#00f5ff;font-size:18px">layers</span>Stage Analysis
+        </h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+          <div class="mini-card">
+            <div class="mini-label">Weinstein</div>
+            <div id="weinsteinStage" class="mini-val" style="color:#00f5ff">--</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-label">Weekly Tide</div>
+            <div id="weeklyTide" class="mini-val">--</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-label">Triple Screen</div>
+            <div id="tripleScreen" class="mini-val">--</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-label">VIX</div>
+            <div id="vixDisplay" class="mini-val" style="color:#00f5ff">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Minervini Trend Template -->
+      <div class="cyber-panel" style="padding:24px;border-radius:12px">
+        <h3 style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:rgba(255,255,255,0.7);margin-bottom:20px;display:flex;align-items:center;gap:8px">
+          <span class="material-symbols-outlined" style="color:#9d4edd;font-size:18px">trending_up</span>Minervini Trend Template
+        </h3>
+        <div style="display:flex;align-items:center;gap:20px">
+          <div id="trendScore" style="font-size:48px;font-weight:900;font-family:'Rajdhani',sans-serif;color:#9d4edd;line-height:1">-/9</div>
+          <div style="flex:1">
+            <div style="height:10px;background:rgba(255,255,255,0.06);border-radius:5px;overflow:hidden;margin-bottom:8px">
+              <div id="trendBarFill" style="height:100%;width:0%;background:linear-gradient(90deg,#9d4edd,#00f5ff);transition:width 0.6s ease;border-radius:5px"></div>
+            </div>
+            <div id="trendLabel" style="font-size:10px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.4)">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 3: Fundamentals -->
+    <div class="cyber-panel" style="padding:24px;border-radius:12px">
+      <h3 style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:rgba(255,255,255,0.7);margin-bottom:20px;display:flex;align-items:center;gap:8px">
+        <span class="material-symbols-outlined" style="color:#00ff41;font-size:18px">account_balance</span>Fundamentals — Lynch / O'Neil / Fisher
+      </h3>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:12px">
+        <div class="mini-card">
+          <div class="mini-label">PEG Ratio</div>
+          <div id="pegRatio" class="mini-val" style="color:#00f5ff">--</div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-label">Debt/Equity</div>
+          <div id="debtEquity" class="mini-val">--</div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-label">Fisher Score</div>
+          <div id="fisherScore" class="mini-val" style="color:#9d4edd">--/6</div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-label">Lynch Category</div>
+          <div id="lynchCategory" class="mini-val" style="font-size:11px">--</div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-label">Net Margin</div>
+          <div id="profitMargin" class="mini-val">--</div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-label">Insider %</div>
+          <div id="insiderPct" class="mini-val">--</div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-label">R&D Ratio</div>
+          <div id="rdRatio" class="mini-val">--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 4: Davey Signal Grid -->
+    <div class="cyber-panel" style="padding:24px;border-radius:12px">
+      <h3 style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:rgba(255,255,255,0.7);margin-bottom:20px;display:flex;align-items:center;gap:8px">
+        <span class="material-symbols-outlined" style="color:#ffcc00;font-size:18px">sensors</span>Davey Signal Engine
+      </h3>
+      <div id="daveyGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:10px"></div>
+    </div>
+
+    <!-- ROW 5: Chart + Signals -->
     <div style="display:grid;grid-template-columns:3fr 2fr;gap:24px">
       <div class="cyber-panel" style="border-radius:12px;overflow:hidden">
         <div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.01)">
@@ -166,7 +262,7 @@ body {
           <iframe src="https://s.tradingview.com/widgetembed/?symbol=AAPL&interval=D&theme=dark&allow_symbol_change=1" width="100%" height="460" frameborder="0" style="display:block"></iframe>
         </div>
       </div>
-      <div class="cyber-panel" style="padding:24px;border-radius:12px">
+      <div class="cyber-panel" style="padding:24px;border-radius:12px;overflow-y:auto;max-height:520px">
         <h3 style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:rgba(255,255,255,0.7);margin-bottom:20px;display:flex;align-items:center;gap:8px">
           <span class="material-symbols-outlined" style="color:#9d4edd;font-size:18px">sensors</span>Signal Engine
         </h3>
@@ -176,7 +272,7 @@ body {
       </div>
     </div>
 
-    <!-- ROW 3: AI Analysis -->
+    <!-- ROW 6: AI Analysis -->
     <div class="cyber-panel" style="padding:40px;border-radius:12px">
       <div style="display:flex;gap:32px;align-items:flex-start">
         <div style="width:64px;height:64px;background:linear-gradient(135deg,#00f5ff,#9d4edd);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 20px rgba(0,245,255,0.2)">
@@ -206,45 +302,154 @@ const API = 'https://stocksignal-backend-mcfs.onrender.com';
 let currentSymbol = 'AAPL';
 let watchlist = JSON.parse(localStorage.getItem('watchlist') || '["AAPL","TSLA"]');
 
+function setText(id, val) { const el = document.getElementById(id); if (el) el.innerText = val; }
+function setColor(id, col) { const el = document.getElementById(id); if (el) el.style.color = col; }
+
 async function fetchStock(symbol) {
   currentSymbol = symbol;
-  document.getElementById('verdict').innerText = '...';
-  document.getElementById('verdict').style.color = '#00f5ff';
-  document.getElementById('price').innerText = '...';
+  setText('verdict', '...'); setColor('verdict', '#00f5ff');
+  setText('price', '...');
   try {
     const res = await fetch(`${API}/predict?symbol=${encodeURIComponent(symbol)}`);
     const d = await res.json();
-    if (d.error) { document.getElementById('verdict').innerText = 'ERROR'; return; }
+    if (d.error) { setText('verdict', 'ERROR'); return; }
     const cur = symbol.includes('.NS') ? '₹' : '$';
+
+    // ── Basic ──────────────────────────────────────────────────────────
     document.getElementById('stockName').innerHTML = `${d.company} <span style="color:#00f5ff;font-size:1.2rem;font-style:normal;font-family:'Share Tech Mono',monospace">(${d.symbol})</span>`;
-    document.getElementById('price').innerText = cur + d.price;
+    setText('price', cur + d.price);
+
     const verdict = document.getElementById('verdict');
     verdict.innerText = d.prediction;
     verdict.style.color = d.prediction==='BUY' ? '#00ff41' : d.prediction==='SELL' ? '#ff003c' : '#ffcc00';
-    document.getElementById('confidence').innerText = d.confidence + '%';
+
+    setText('confidence', d.confidence + '%');
     document.getElementById('confidenceBar').style.width = d.confidence + '%';
+
     const re = document.getElementById('regime');
     if (re) { re.innerText = d.regime||'-'; re.style.color = d.regime==='TREND_UP'?'#00ff41':d.regime==='TREND_DOWN'?'#ff003c':'#ffcc00'; }
+
+    // ── Model Pills ───────────────────────────────────────────────────
     const m = d.models||{};
-    document.getElementById('modelPills').innerHTML = [['DT',m.decision_tree],['RF',m.random_forest],['LR',m.logistic],['XGB',m.xgboost]].map(([k,v])=>
-      `<span style="padding:4px 10px;background:rgba(255,255,255,0.05);font-size:10px;font-family:'Share Tech Mono',monospace;border:1px solid rgba(255,255,255,0.1);border-radius:2px;color:${v==='BUY'?'#00ff41':'#ff003c'}">${k}:${v==='BUY'?'BULL':'BEAR'}</span>`
-    ).join('') + `<span style="padding:4px 12px;background:rgba(0,245,255,0.08);font-size:10px;font-family:'Share Tech Mono',monospace;border:1px solid rgba(0,245,255,0.25);border-radius:2px;color:#00f5ff;font-weight:700;margin-left:8px">${d.confidence_breakdown?.agreement||''}</span>`;
+    document.getElementById('modelPills').innerHTML =
+      [['DT',m.decision_tree],['RF',m.random_forest],['LR',m.logistic],['XGB',m.xgboost]].map(([k,v])=>
+        `<span style="padding:4px 10px;background:rgba(255,255,255,0.05);font-size:10px;font-family:'Share Tech Mono',monospace;border:1px solid rgba(255,255,255,0.1);border-radius:2px;color:${v==='BUY'?'#00ff41':'#ff003c'}">${k}:${v==='BUY'?'BULL':'BEAR'}</span>`
+      ).join('') +
+      `<span style="padding:4px 12px;background:rgba(0,245,255,0.08);font-size:10px;font-family:'Share Tech Mono',monospace;border:1px solid rgba(0,245,255,0.25);border-radius:2px;color:#00f5ff;font-weight:700;margin-left:8px">${d.confidence_breakdown?.agreement||''}</span>`;
+
+    // ── Trade Plan ────────────────────────────────────────────────────
     const tp = d.trade_plan||{};
-    document.getElementById('entry').innerText    = (tp.entry    && tp.entry    !=='-') ? cur+Number(tp.entry).toFixed(2)     : 'HOLD';
-    document.getElementById('stopLoss').innerText = (tp.stop_loss && tp.stop_loss!=='-') ? cur+Number(tp.stop_loss).toFixed(2) : 'HOLD';
-    document.getElementById('target').innerText   = (tp.target   && tp.target   !=='-') ? cur+Number(tp.target).toFixed(2)    : 'HOLD';
-    document.getElementById('rr').innerText       = (tp.risk_reward && tp.risk_reward!=='-') ? '1:'+tp.risk_reward : '—';
+    setText('entry',    (tp.entry     && tp.entry    !=='-') ? cur+Number(tp.entry).toFixed(2)     : 'HOLD');
+    setText('stopLoss', (tp.stop_loss && tp.stop_loss!=='-') ? cur+Number(tp.stop_loss).toFixed(2) : 'HOLD');
+    setText('target',   (tp.target    && tp.target   !=='-') ? cur+Number(tp.target).toFixed(2)    : 'HOLD');
+    setText('rr',       (tp.risk_reward && tp.risk_reward!=='-') ? '1:'+tp.risk_reward : '—');
+
+    // ── Signals ───────────────────────────────────────────────────────
     const sigEl = document.getElementById('signals');
     if (sigEl && d.signals) sigEl.innerHTML = d.signals.map(s => {
-      const c = s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? '#00ff41' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? '#ff003c' : '#ffcc00';
-      const lbl = s.includes('Bullish')||s.includes('Positive')||s.includes('Oversold') ? 'BUY' : s.includes('Bearish')||s.includes('Negative')||s.includes('Overbought') ? 'SELL' : 'NEUTRAL';
-      return `<li style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid rgba(255,255,255,0.05);border-left:3px solid ${c};border-radius:0 4px 4px 0"><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.8)">${s}</span><span style="font-size:10px;font-family:'Share Tech Mono',monospace;font-weight:700;color:${c}">${lbl}</span></li>`;
+      const c = s.includes('✅')||s.includes('BUY')||s.includes('Bullish')||s.includes('Oversold')||s.includes('Positive') ? '#00ff41'
+              : s.includes('⛔')||s.includes('⚠️')||s.includes('SELL')||s.includes('Bearish')||s.includes('Overbought')||s.includes('Declining') ? '#ff003c'
+              : '#ffcc00';
+      return `<li style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid rgba(255,255,255,0.05);border-left:3px solid ${c};border-radius:0 4px 4px 0">
+        <span style="font-size:11px;color:rgba(255,255,255,0.8)">${s}</span>
+      </li>`;
     }).join('');
-    const ai = document.getElementById('aiAnalysis');
-    if (ai) ai.innerText = d.ai_analysis||'No analysis.';
+
+    // ── AI Analysis ───────────────────────────────────────────────────
+    setText('aiAnalysis', d.ai_analysis||'No analysis.');
+
+    // ── Chart ─────────────────────────────────────────────────────────
     document.getElementById('chart').innerHTML = `<iframe src="https://s.tradingview.com/widgetembed/?symbol=${symbol}&interval=D&theme=dark&allow_symbol_change=1" width="100%" height="460" frameborder="0" style="display:block"></iframe>`;
+
+    // ── Stage Analysis (Weinstein + Elder + VIX) ──────────────────────
+    const ds = d.davey_signals || {};
+
+    const wsStage = ds.weinstein_stage || 0;
+    const wsEl = document.getElementById('weinsteinStage');
+    if (wsEl) {
+      wsEl.innerText = wsStage ? `STAGE ${wsStage}` : '--';
+      wsEl.style.color = wsStage===2 ? '#00ff41' : wsStage===4 ? '#ff003c' : wsStage===3 ? '#ffcc00' : '#00f5ff';
+    }
+
+    const tideEl = document.getElementById('weeklyTide');
+    if (tideEl) {
+      tideEl.innerText = ds.weekly_bull_tide ? 'BULL ▲' : ds.weekly_bull_tide===false ? 'BEAR ▼' : '--';
+      tideEl.style.color = ds.weekly_bull_tide ? '#00ff41' : '#ff003c';
+    }
+
+    const tsEl = document.getElementById('tripleScreen');
+    if (tsEl) {
+      tsEl.innerText = ds.triple_screen_buy ? '✅ BUY' : ds.triple_screen_sell ? '🔴 SELL' : '⏳ WAIT';
+      tsEl.style.color = ds.triple_screen_buy ? '#00ff41' : ds.triple_screen_sell ? '#ff003c' : '#ffcc00';
+    }
+
+    const vixEl = document.getElementById('vixDisplay');
+    if (vixEl && ds.vix) {
+      vixEl.innerText = Number(ds.vix).toFixed(1);
+      vixEl.style.color = ds.vix > 35 ? '#ff003c' : ds.vix > 25 ? '#ffcc00' : ds.vix < 15 ? '#9d4edd' : '#00f5ff';
+    }
+
+    // ── Minervini Trend Template ───────────────────────────────────────
+    const tsRaw = ds.trend_score || '0/9';
+    const tsNum = parseInt(tsRaw) || 0;
+    setText('trendScore', tsRaw);
+    document.getElementById('trendBarFill').style.width = (tsNum / 9 * 100) + '%';
+    setText('trendLabel', tsNum>=8 ? '⭐ SUPERPERFORMANCE CANDIDATE' : tsNum>=6 ? '✅ TREND CONFIRMED' : tsNum>=4 ? '⚠️ PARTIAL TREND' : '❌ TREND FAILED');
+    setColor('trendLabel', tsNum>=8 ? '#00ff41' : tsNum>=6 ? '#00f5ff' : tsNum>=4 ? '#ffcc00' : '#ff003c');
+
+    // ── Fundamentals ──────────────────────────────────────────────────
+    const ld = d.lynch_data || {};
+
+    const pegVal = ld.peg_ratio;
+    const pegEl = document.getElementById('pegRatio');
+    if (pegEl) {
+      pegEl.innerText = pegVal && pegVal !== 'N/A' ? pegVal : 'N/A';
+      if (pegVal && pegVal !== 'N/A') pegEl.style.color = pegVal < 1 ? '#00ff41' : pegVal > 2 ? '#ff003c' : '#ffcc00';
+    }
+
+    const debtEl = document.getElementById('debtEquity');
+    if (debtEl) {
+      debtEl.innerText = ld.debt_to_equity !== undefined ? ld.debt_to_equity : '--';
+      debtEl.style.color = ld.debt_zone==='SAFE' ? '#00ff41' : ld.debt_zone==='DANGER' ? '#ff003c' : '#ffcc00';
+    }
+
+    const fsEl = document.getElementById('fisherScore');
+    if (fsEl) {
+      fsEl.innerText = ld.fisher_score !== undefined ? `${ld.fisher_score}/6` : '--/6';
+      fsEl.style.color = ld.fisher_score >= 5 ? '#00ff41' : ld.fisher_score >= 3 ? '#ffcc00' : '#ff003c';
+    }
+
+    setText('lynchCategory', ld.lynch_category || '--');
+    const lcEl = document.getElementById('lynchCategory');
+    if (lcEl) lcEl.style.color = ld.lynch_category==='FAST_GROWER' ? '#00ff41' : ld.lynch_category==='DECLINING' ? '#ff003c' : '#00f5ff';
+
+    setText('profitMargin', ld.profit_margin !== undefined ? ld.profit_margin + '%' : '--');
+    setText('insiderPct',   ld.insider_pct   !== undefined ? ld.insider_pct   + '%' : '--');
+    setText('rdRatio',      ld.rd_ratio      !== undefined ? ld.rd_ratio      + '%' : '--');
+
+    // ── Davey Signal Grid ─────────────────────────────────────────────
+    const daveyItems = [
+      { label:'ADX ZONE',    val: ds.adx_zone||'--',    color: ds.adx_zone==='TRENDING'?'#00ff41':ds.adx_zone==='EXHAUSTED'?'#ff003c':'#00f5ff' },
+      { label:'BB ZONE',     val: ds.bb_zone||'--',     color: ds.bb_zone==='OVERSOLD'?'#00ff41':ds.bb_zone==='OVERBOUGHT'?'#ff003c':'#00f5ff' },
+      { label:'LIQUIDITY',   val: ds.liquid?'✅ OK':'❌ LOW', color: ds.liquid?'#00ff41':'#ff003c' },
+      { label:'3 AMIGOS',    val: ds.three_amigos_buy?'BUY':ds.three_amigos_sell?'SELL':'--', color: ds.three_amigos_buy?'#00ff41':ds.three_amigos_sell?'#ff003c':'rgba(255,255,255,0.3)' },
+      { label:'PULLBACK',    val: ds.pullback_buy?'BUY':ds.pullback_sell?'SELL':'--', color: ds.pullback_buy?'#00ff41':ds.pullback_sell?'#ff003c':'rgba(255,255,255,0.3)' },
+      { label:'VCP',         val: ds.vcp_setup?'ACTIVE':'--', color: ds.vcp_setup?'#00ff41':'rgba(255,255,255,0.3)' },
+      { label:'DAYS HELD',   val: `DAY ${ds.bars_held||0}`, color: ds.timed_exit?'#ff003c':'#00f5ff' },
+      { label:'VOL RATIO',   val: ds.vol_ratio ? ds.vol_ratio+'x':'--', color: ds.vol_ratio>1.5?'#00ff41':ds.vol_ratio<0.5?'#ff003c':'#ffcc00' },
+    ];
+
+    const dg = document.getElementById('daveyGrid');
+    if (dg) dg.innerHTML = daveyItems.map(item => `
+      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:12px;text-align:center">
+        <div style="font-size:8px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.25);margin-bottom:6px;letter-spacing:0.1em">${item.label}</div>
+        <div style="font-size:12px;font-weight:700;font-family:'Share Tech Mono',monospace;color:${item.color}">${item.val}</div>
+      </div>`).join('');
+
     renderWatchlist();
-  } catch(e) { document.getElementById('verdict').innerText='ERROR'; document.getElementById('verdict').style.color='#ff003c'; console.error(e); }
+  } catch(e) {
+    setText('verdict', 'ERROR'); setColor('verdict', '#ff003c'); console.error(e);
+  }
 }
 
 async function searchStock(value) {
@@ -256,7 +461,12 @@ async function searchStock(value) {
     const res = await fetch(`${API}/search?query=${encodeURIComponent(value)}`);
     const data = await res.json();
     if (!data.length) { dd.innerHTML = `<div style="padding:12px;color:rgba(255,255,255,0.3);font-size:11px">No results</div>`; return; }
-    dd.innerHTML = data.map(s=>`<div onclick="selectStock('${s.symbol}')" style="padding:10px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'"><span style="font-size:12px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.8)">${s.name}</span><span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:#00f5ff">${s.symbol}</span></div>`).join('');
+    dd.innerHTML = data.map(s=>`
+      <div onclick="selectStock('${s.symbol}')" style="padding:10px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between"
+        onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'">
+        <span style="font-size:12px;font-family:'Share Tech Mono',monospace;color:rgba(255,255,255,0.8)">${s.name}</span>
+        <span style="font-size:10px;font-family:'Share Tech Mono',monospace;color:#00f5ff">${s.symbol}</span>
+      </div>`).join('');
   } catch(e) { dd.innerHTML=`<div style="padding:12px;color:#ff003c;font-size:11px">Failed</div>`; }
 }
 
@@ -268,57 +478,120 @@ function selectStock(symbol) {
 
 function addToWatchlist() {
   if (!watchlist.includes(currentSymbol)) {
-    watchlist.push(currentSymbol); localStorage.setItem('watchlist',JSON.stringify(watchlist)); renderWatchlist(); alert(currentSymbol+' added ✅');
+    watchlist.push(currentSymbol);
+    localStorage.setItem('watchlist', JSON.stringify(watchlist));
+    renderWatchlist();
+    alert(currentSymbol + ' added ✅');
   } else alert('Already in watchlist');
 }
 
 function removeFromWatchlist(symbol) {
-  watchlist = watchlist.filter(s=>s!==symbol); localStorage.setItem('watchlist',JSON.stringify(watchlist)); renderWatchlist();
+  watchlist = watchlist.filter(s=>s!==symbol);
+  localStorage.setItem('watchlist', JSON.stringify(watchlist));
+  renderWatchlist();
 }
 
 function renderWatchlist() {
-  const nav = document.getElementById('watchlistNav');
+  const nav  = document.getElementById('watchlistNav');
   const side = document.getElementById('watchlistSidebar');
-  if (nav) nav.innerHTML = watchlist.map(s=>`<span style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(0,245,255,0.08);border:1px solid rgba(0,245,255,0.2);border-radius:4px;font-size:10px;font-family:'Share Tech Mono',monospace;color:#00f5ff"><span onclick="fetchStock('${s}')" style="cursor:pointer">${s}</span><span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer">×</span></span>`).join('');
-  if (side) side.innerHTML = watchlist.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:4px;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'"><span onclick="fetchStock('${s}')" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:white">${s}</span><span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer;font-size:14px">×</span></div>`).join('');
+  if (nav) nav.innerHTML = watchlist.map(s=>`
+    <span style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(0,245,255,0.08);border:1px solid rgba(0,245,255,0.2);border-radius:4px;font-size:10px;font-family:'Share Tech Mono',monospace;color:#00f5ff">
+      <span onclick="fetchStock('${s}')" style="cursor:pointer">${s}</span>
+      <span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer">×</span>
+    </span>`).join('');
+  if (side) side.innerHTML = watchlist.map(s=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:4px;cursor:pointer"
+      onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+      <span onclick="fetchStock('${s}')" style="font-size:11px;font-family:'Share Tech Mono',monospace;color:white">${s}</span>
+      <span onclick="removeFromWatchlist('${s}')" style="color:#ff003c;cursor:pointer;font-size:14px">×</span>
+    </div>`).join('');
 }
 
 async function loadBestStock() {
-  const l=document.getElementById('loading-layer'); l.style.display='flex';
-  try { const res=await fetch(`${API}/top-opportunity`); const data=await res.json(); const best=data.portfolio?.[0]; if(best) await fetchStock(best.symbol); } catch(e){console.error(e);}
+  const l = document.getElementById('loading-layer'); l.style.display='flex';
+  try {
+    const res = await fetch(`${API}/top-opportunity`);
+    const data = await res.json();
+    const best = data.portfolio?.[0];
+    if (best) await fetchStock(best.symbol);
+  } catch(e) { console.error(e); }
   finally { l.style.display='none'; }
 }
 
 async function runBacktest() {
-  const el=document.getElementById('backtestResult');
-  el.innerHTML=`<div style="color:#00f5ff;padding:8px">RUNNING...</div>`;
+  const el = document.getElementById('backtestResult');
+  el.innerHTML = `<div style="color:#00f5ff;padding:8px">RUNNING...</div>`;
   try {
-    const res=await fetch(`${API}/backtest?symbol=${currentSymbol}`); const d=await res.json(); const cur=currentSymbol.includes('.NS')?'₹':'$';
-    el.innerHTML=`<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;line-height:1.9"><div style="color:#00f5ff;font-weight:700;margin-bottom:4px">BACKTEST — ${currentSymbol}</div><div style="color:rgba(255,255,255,0.5)">ACCURACY: <span style="color:white">${d.accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">W:<span style="color:#00ff41"> ${d.wins}</span> L:<span style="color:#ff003c"> ${d.losses}</span></div><div style="color:rgba(255,255,255,0.5)">PROFIT: <span style="color:${d.profit>=0?'#00ff41':'#ff003c'}">${cur}${d.profit}</span></div><div style="color:rgba(255,255,255,0.5)">FINAL: <span style="color:#00f5ff">${cur}${d.final_capital}</span></div></div>`;
-  } catch(e) { el.innerHTML=`<div style="color:#ff003c;padding:8px">FAILED</div>`; }
+    const res = await fetch(`${API}/backtest?symbol=${currentSymbol}`);
+    const d = await res.json();
+    const cur = currentSymbol.includes('.NS') ? '₹' : '$';
+    el.innerHTML = `<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;line-height:1.9;font-size:10px">
+      <div style="color:#00f5ff;font-weight:700;margin-bottom:6px">BACKTEST — ${currentSymbol}</div>
+      <div style="color:rgba(255,255,255,0.5)">METHOD: <span style="color:white;font-size:9px">Walk-Forward</span></div>
+      <div style="color:rgba(255,255,255,0.5)">ACCURACY: <span style="color:white">${d.accuracy}%</span></div>
+      <div style="color:rgba(255,255,255,0.5)">W:<span style="color:#00ff41"> ${d.wins}</span> L:<span style="color:#ff003c"> ${d.losses}</span></div>
+      <div style="color:rgba(255,255,255,0.5)">PROFIT: <span style="color:${d.profit>=0?'#00ff41':'#ff003c'}">${cur}${d.profit}</span></div>
+      <div style="color:rgba(255,255,255,0.5)">SHARPE: <span style="color:#9d4edd">${d.sharpe_ratio||'--'}</span></div>
+      <div style="color:rgba(255,255,255,0.5)">MAX DD: <span style="color:#ffcc00">${d.max_drawdown||'--'}%</span></div>
+      <div style="color:rgba(255,255,255,0.5)">FINAL: <span style="color:#00f5ff">${cur}${d.final_capital}</span></div>
+    </div>`;
+  } catch(e) { el.innerHTML = `<div style="color:#ff003c;padding:8px">FAILED</div>`; }
 }
 
 async function loadModelStats() {
-  const el=document.getElementById('modelStats');
-  el.innerHTML=`<div style="color:#9d4edd;padding:8px">LOADING...</div>`;
+  const el = document.getElementById('modelStats');
+  el.innerHTML = `<div style="color:#9d4edd;padding:8px">LOADING...</div>`;
   try {
-    const res=await fetch(`${API}/model-stats?symbol=${currentSymbol}`); const d=await res.json();
-    el.innerHTML=`<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;line-height:1.9"><div style="color:#9d4edd;font-weight:700;margin-bottom:4px">MODEL STATS</div><div style="color:rgba(255,255,255,0.5)">DT: <span style="color:white">${d.decision_tree_accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">RF: <span style="color:white">${d.random_forest_accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">LR: <span style="color:white">${d.logistic_accuracy}%</span></div><div style="color:rgba(255,255,255,0.5)">XGB: <span style="color:white">${d.xgboost_accuracy}%</span></div></div>`;
-  } catch(e) { el.innerHTML=`<div style="color:#ff003c;padding:8px">FAILED</div>`; }
+    const res = await fetch(`${API}/model-stats?symbol=${currentSymbol}`);
+    const d = await res.json();
+    el.innerHTML = `<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:4px;line-height:1.9;font-size:10px">
+      <div style="color:#9d4edd;font-weight:700;margin-bottom:6px">MODEL STATS</div>
+      <div style="color:rgba(255,255,255,0.5)">DT: <span style="color:white">${d.decision_tree_accuracy}%</span></div>
+      <div style="color:rgba(255,255,255,0.5)">RF: <span style="color:white">${d.random_forest_accuracy}%</span></div>
+      <div style="color:rgba(255,255,255,0.5)">LR: <span style="color:white">${d.logistic_accuracy}%</span></div>
+      <div style="color:rgba(255,255,255,0.5)">XGB: <span style="color:white">${d.xgboost_accuracy}%</span></div>
+    </div>`;
+  } catch(e) { el.innerHTML = `<div style="color:#ff003c;padding:8px">FAILED</div>`; }
+}
+
+async function loadExpectancy() {
+  const el = document.getElementById('expectancyResult');
+  el.innerHTML = `<div style="color:#ffcc00;padding:8px">CALCULATING...</div>`;
+  try {
+    const res = await fetch(`${API}/expectancy?symbol=${currentSymbol}`);
+    const d = await res.json();
+    el.innerHTML = `<div style="padding:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,204,0,0.2);border-radius:4px;line-height:1.9;font-size:10px">
+      <div style="color:#ffcc00;font-weight:700;margin-bottom:6px">THARP EXPECTANCY</div>
+      <div style="color:rgba(255,255,255,0.5)">SQN: <span style="color:${d.sqn>3?'#00ff41':d.sqn>2?'#ffcc00':'#ff003c'}">${d.sqn} (${d.sqn_rating})</span></div>
+      <div style="color:rgba(255,255,255,0.5)">EXPECTANCY: <span style="color:${d.expectancy_r>0?'#00ff41':'#ff003c'}">${d.expectancy_r}R</span></div>
+      <div style="color:rgba(255,255,255,0.5)">WIN RATE: <span style="color:white">${d.win_rate}%</span></div>
+      <div style="color:rgba(255,255,255,0.5)">AVG WIN: <span style="color:#00ff41">${d.avg_win_r}R</span></div>
+      <div style="color:rgba(255,255,255,0.5)">AVG LOSS: <span style="color:#ff003c">${d.avg_loss_r}R</span></div>
+      <div style="color:rgba(255,255,255,0.5)">MKT TYPE: <span style="color:#9d4edd">${d.market_type}</span></div>
+      <div style="font-size:9px;color:#ffcc00;margin-top:6px">${d.recommended_risk_pct}</div>
+    </div>`;
+  } catch(e) { el.innerHTML = `<div style="color:#ff003c;padding:8px">FAILED</div>`; }
 }
 
 async function loadTopStocks() {
-  const el=document.getElementById('topStocks');
-  el.innerHTML=`<div style="color:#00f5ff;padding:8px">SCANNING...</div>`;
+  const el = document.getElementById('topStocks');
+  el.innerHTML = `<div style="color:#00f5ff;padding:8px">SCANNING...</div>`;
   try {
-    const res=await fetch(`${API}/top-opportunity`); const data=await res.json();
-    el.innerHTML=(data.portfolio||[]).map(s=>`<div onclick="fetchStock('${s.symbol}')" style="padding:8px;cursor:pointer;display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.05)" onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'"><span style="color:white">${s.symbol} <span style="color:${s.prediction==='BUY'?'#00ff41':'#ff003c'}">${s.prediction}</span></span><span style="color:#00f5ff">${s.confidence}%</span></div>`).join('');
-  } catch(e) { el.innerHTML=`<div style="color:#ff003c;padding:8px">FAILED</div>`; }
+    const res = await fetch(`${API}/top-opportunity`);
+    const data = await res.json();
+    el.innerHTML = (data.portfolio||[]).map(s=>`
+      <div onclick="fetchStock('${s.symbol}')" style="padding:8px;cursor:pointer;display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.05)"
+        onmouseover="this.style.background='rgba(0,245,255,0.05)'" onmouseout="this.style.background='transparent'">
+        <span style="font-size:11px;font-family:'Share Tech Mono',monospace;color:white">${s.symbol} <span style="color:${s.prediction==='BUY'?'#00ff41':'#ff003c'}">${s.prediction}</span></span>
+        <span style="font-size:11px;font-family:'Share Tech Mono',monospace;color:#00f5ff">${s.confidence}%</span>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div style="color:#ff003c;padding:8px">FAILED</div>`; }
 }
 
 document.addEventListener('click', e => {
-  const dd=document.getElementById('dropdown'); const si=document.getElementById('searchInput');
-  if (!dd.contains(e.target) && e.target!==si) dd.classList.remove('show');
+  const dd = document.getElementById('dropdown');
+  const si = document.getElementById('searchInput');
+  if (dd && !dd.contains(e.target) && e.target !== si) dd.classList.remove('show');
 });
 
 renderWatchlist();
