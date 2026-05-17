@@ -252,7 +252,9 @@ def load_models():
         lr_model  = joblib.load("lr.pkl")
         xgb_model = joblib.load("xgb.pkl")
         scaler    = joblib.load("scaler.pkl")
-        print("✅ Pre-trained models loaded")
+        explainer = joblib.load("explainer.pkl")
+        print("✅ Pre-trained models loaded in seconds")
+        print(f"✅ Ready to serve signals")
     except Exception as e:
         print(f"No saved models found, training now: {e}")
         _train_from_scratch()
@@ -283,7 +285,12 @@ def _train_from_scratch():
     df["Close"] = df["Close"].astype(float)
     df["target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
     df.dropna(subset=["target"], inplace=True)
-    X = df[["RSI","MA20","MA50","momentum","volatility"]]
+    feature_cols = ["RSI","MA20","MA50","momentum","volatility",
+                    "ATR","ADX","BB_pos","vol_ratio","zscore",
+                    "trend_score","MFI","stoch_k"]
+    # Only use cols that exist
+    feature_cols = [c for c in feature_cols if c in df.columns]
+    X = df[feature_cols]
     y = df["target"]
     scaler    = StandardScaler()
     X_scaled  = scaler.fit_transform(X)
@@ -438,6 +445,111 @@ def predict(symbol: str = Query("AAPL")):
     pct_from_52w       = float(latest.get("pct_from_52w_high", -10))
 
     # ── O'Neil CANSLIM — C: Current Quarterly Earnings ────────────────
+    # ════════════════════════════════════════════════════════════════
+    # PETER LYNCH — One Up on Wall Street
+    # Fundamental quality checks before any trade
+    # These run BEFORE O'Neil checks — bad fundamentals = no trade
+    # ════════════════════════════════════════════════════════════════
+    try:
+        lynch_ticker = yf.Ticker(symbol)
+        lynch_info   = lynch_ticker.info or {}
+
+        # ── PEG Ratio (Lynch's most important number) ─────────────
+        # PEG = P/E divided by earnings growth rate
+        # PEG < 1.0 = undervalued relative to growth = BUY zone
+        # PEG 1-2   = fairly valued
+        # PEG > 2.0 = overvalued = avoid regardless of technicals
+        pe_ratio      = float(lynch_info.get("trailingPE", 0) or 0)
+        growth_rate   = float(lynch_info.get("earningsGrowth", 0) or 0) * 100
+        if pe_ratio > 0 and growth_rate > 0:
+            peg_ratio = pe_ratio / growth_rate
+        else:
+            peg_ratio = 999  # unknown = neutral, don't penalize
+
+        peg_undervalued = 0 < peg_ratio < 1.0    # Lynch sweet spot
+        peg_fair        = 1.0 <= peg_ratio <= 2.0
+        peg_overvalued  = peg_ratio > 2.0
+
+        # ── Debt to Equity (Lynch: low debt = can't go bankrupt) ──
+        # Below 0.3 = fortress balance sheet
+        # 0.3-0.8   = acceptable
+        # Above 1.0 = risky, avoid
+        # Above 2.0 = danger zone regardless of signals
+        debt_to_equity = float(lynch_info.get("debtToEquity", 0) or 0) / 100
+        debt_safe      = debt_to_equity < 0.5
+        debt_risky     = debt_to_equity > 1.0
+        debt_danger    = debt_to_equity > 2.0
+
+        # ── Cash Per Share (Lynch: hidden value) ──────────────────
+        # If cash per share > 30% of stock price = massive margin of safety
+        # You're buying the business at a big discount
+        total_cash     = float(lynch_info.get("totalCash", 0) or 0)
+        shares_out     = float(lynch_info.get("sharesOutstanding", 1) or 1)
+        cash_per_share = total_cash / shares_out if shares_out > 0 else 0
+        cash_rich      = cash_per_share > (price * 0.3)  # 30%+ cash = very safe
+
+        # ── Share Buyback Signal (Lynch: management confidence) ────
+        # Company buying back its own shares = management thinks stock is cheap
+        # Shares outstanding shrinking = EPS automatically increases
+        # This is Lynch's "purest synergy" — better than acquisitions
+        shares_float   = float(lynch_info.get("floatShares", 0) or 0)
+        shares_total   = float(lynch_info.get("sharesOutstanding", 0) or 0)
+        buyback_signal = (shares_float > 0 and shares_total > 0 and
+                         shares_float < shares_total * 0.95)  # float shrinking
+
+        # ── Lynch Stock Category (based on revenue growth) ────────
+        # Determines which Lynch category this stock falls into
+        # Fast Growers = 20-50% revenue growth = Lynch's sweet spot
+        # Stalwarts = 8-20% = good but less exciting
+        # Slow Growers = below 8% = avoid for swing trading
+        revenue_growth = float(lynch_info.get("revenueGrowth", 0) or 0) * 100
+        if revenue_growth >= 25:
+            lynch_category = "FAST_GROWER"    # Lynch's primary target
+        elif revenue_growth >= 10:
+            lynch_category = "STALWART"       # Solid, buy at low PE
+        elif revenue_growth >= 0:
+            lynch_category = "SLOW_GROWER"    # Avoid for swing trading
+        else:
+            lynch_category = "DECLINING"      # Never buy
+
+        # ── Profit Margin trend (Lynch: expanding margins = power) ─
+        # Company that can raise prices without losing customers = moat
+        # Gross margins expanding = pricing power = durable business
+        profit_margin  = float(lynch_info.get("profitMargins", 0) or 0) * 100
+        margin_healthy = profit_margin > 10   # 10%+ net margin = solid
+        margin_strong  = profit_margin > 20   # 20%+ = exceptional
+
+        # ── Insider Ownership (Lynch: skin in the game) ────────────
+        # High insider ownership = management aligned with shareholders
+        # Above 20% = good alignment
+        # Above 50% = exceptional (common in Indian promoter-owned companies)
+        insider_pct    = float(lynch_info.get("heldPercentInsiders", 0) or 0) * 100
+        insider_aligned = insider_pct > 20
+        insider_strong  = insider_pct > 50   # promoter-style ownership
+
+    except Exception as e:
+        # If fundamentals fail to load, use neutral defaults
+        # Don't block trade — just don't add fundamental bonus
+        peg_ratio       = 999
+        peg_undervalued = False
+        peg_fair        = True
+        peg_overvalued  = False
+        debt_to_equity  = 0.3
+        debt_safe       = True
+        debt_risky      = False
+        debt_danger     = False
+        cash_per_share  = 0
+        cash_rich       = False
+        buyback_signal  = False
+        lynch_category  = "UNKNOWN"
+        revenue_growth  = 0
+        profit_margin   = 0
+        margin_healthy  = False
+        margin_strong   = False
+        insider_pct     = 0
+        insider_aligned = False
+        insider_strong  = False
+
     try:
         ticker = yf.Ticker(symbol)
         income = ticker.quarterly_financials
@@ -460,6 +572,29 @@ def predict(symbol: str = Query("AAPL")):
         eps_growth = 0; eps_accelerating = False; eps_decelerating = False
 
     # ── O'Neil CANSLIM — A: Annual Earnings + ROE ─────────────────────
+
+    # ── Lynch Inventory Warning ────────────────────────────────────────
+    # Lynch's early warning signal: if inventory grows faster than sales
+    # the company can't sell what it's making = trouble ahead
+    # This appears in financials BEFORE earnings disappoint
+    # One of the most reliable pre-crash signals in consumer/retail stocks
+    try:
+        bs          = lynch_ticker.quarterly_balance_sheet
+        rev         = lynch_ticker.quarterly_financials
+        inventory_warning = False
+        if (bs is not None and not bs.empty and
+            rev is not None and not rev.empty and
+            "Inventory" in bs.index and
+            "Total Revenue" in rev.index):
+            inv  = bs.loc["Inventory"].dropna()
+            revs = rev.loc["Total Revenue"].dropna()
+            if len(inv) >= 2 and len(revs) >= 2:
+                inv_growth  = (float(inv.iloc[0]) - float(inv.iloc[1])) / abs(float(inv.iloc[1])) * 100 if float(inv.iloc[1]) != 0 else 0
+                rev_growth2 = (float(revs.iloc[0]) - float(revs.iloc[1])) / abs(float(revs.iloc[1])) * 100 if float(revs.iloc[1]) != 0 else 0
+                # Inventory growing 20%+ faster than revenue = warning
+                inventory_warning = inv_growth > (rev_growth2 + 20)
+    except:
+        inventory_warning = False
     try:
         annual = ticker.financials
         if annual is not None and not annual.empty and "Net Income" in annual.index:
@@ -660,6 +795,58 @@ def predict(symbol: str = Query("AAPL")):
         signals.append("VCP Setup — Volatility Contracting + Volume Drying [Minervini]"); score += 3
     elif vcp_contracting:
         signals.append("Range Contracting — Partial VCP [Minervini]"); score += 1
+    
+    # ── Lynch signals ─────────────────────────────────────────────────
+    # PEG Ratio — most important Lynch number
+    if peg_undervalued:
+        signals.append(f"PEG {peg_ratio:.2f} — Undervalued vs Growth [Lynch]"); score += 3
+    elif peg_fair:
+        signals.append(f"PEG {peg_ratio:.2f} — Fairly Valued [Lynch]"); score += 1
+    elif peg_overvalued and peg_ratio < 999:
+        signals.append(f"PEG {peg_ratio:.2f} — Overvalued vs Growth [Lynch]"); score -= 2
+
+    # Debt check — Lynch: low debt companies can't go bankrupt
+    if debt_danger:
+        signals.append(f"⛔ Debt/Equity {debt_to_equity:.2f} — DANGER ZONE [Lynch]"); score -= 4
+    elif debt_risky:
+        signals.append(f"⚠️ Debt/Equity {debt_to_equity:.2f} — High Debt [Lynch]"); score -= 2
+    elif debt_safe:
+        signals.append(f"Debt/Equity {debt_to_equity:.2f} — Safe Balance Sheet [Lynch]"); score += 1
+
+    # Lynch category
+    if lynch_category == "FAST_GROWER":
+        signals.append(f"Fast Grower {revenue_growth:.0f}% Revenue Growth [Lynch]"); score += 2
+    elif lynch_category == "STALWART":
+        signals.append(f"Stalwart {revenue_growth:.0f}% Revenue Growth [Lynch]"); score += 1
+    elif lynch_category == "SLOW_GROWER":
+        signals.append(f"Slow Grower {revenue_growth:.0f}% — Weak Category [Lynch]"); score -= 1
+    elif lynch_category == "DECLINING":
+        signals.append(f"⛔ Declining Revenue {revenue_growth:.0f}% [Lynch]"); score -= 3
+
+    # Margin quality
+    if margin_strong:
+        signals.append(f"Strong Margins {profit_margin:.1f}% — Pricing Power [Lynch]"); score += 2
+    elif margin_healthy:
+        signals.append(f"Healthy Margins {profit_margin:.1f}% [Lynch]"); score += 1
+
+    # Insider ownership
+    if insider_strong:
+        signals.append(f"Insider Ownership {insider_pct:.1f}% — Strong Alignment [Lynch]"); score += 2
+    elif insider_aligned:
+        signals.append(f"Insider Ownership {insider_pct:.1f}% [Lynch]"); score += 1
+
+    # Cash richness
+    if cash_rich:
+        signals.append(f"Cash Rich — ₹{cash_per_share:.1f} per share [Lynch]"); score += 1
+
+    # Buyback signal
+    if buyback_signal:
+        signals.append("Share Buyback Detected — Management Confidence [Lynch]"); score += 1
+
+    # Inventory warning — Lynch's early warning
+    if inventory_warning:
+        signals.append("⚠️ Inventory Growing Faster Than Revenue — Early Warning [Lynch]"); score -= 3
+
     # Exit signals
     if three_up_closes:      signals.append("⚠️ 3 Consecutive Up Closes — Exit Signal [Davey #6]")
     if three_down_closes:    signals.append("⚠️ 3 Consecutive Down Closes — Exit Signal [Davey #6]")
@@ -685,6 +872,15 @@ def predict(symbol: str = Query("AAPL")):
 
     # L3: Weinstein Stage 4 — never buy declining stocks
     elif weinstein_stage4:
+        prediction = "HOLD"
+
+    # L4: Lynch Debt Danger — never buy companies with massive debt
+    # A company with debt/equity above 2 can blow up regardless of technicals
+    elif debt_danger:
+        prediction = "HOLD"
+
+    # L5: Lynch Declining Revenue — never buy shrinking businesses
+    elif lynch_category == "DECLINING":
         prediction = "HOLD"
 
     # L4: Minervini Trend Template — need at least 6/9 for any buy signal
@@ -872,6 +1068,20 @@ def predict(symbol: str = Query("AAPL")):
             "market_top_warning": market_top_warning, "follow_through": follow_through,
             "institutional_buying": institutional_buying,
             "trailing_stop": round(price-(2.0*atr),2) if prediction=="BUY" else round(price+(2.0*atr),2) if prediction=="SELL" else "-",
+            # Lynch fundamental data — shown on frontend
+            "lynch_data": {
+                "peg_ratio":        round(peg_ratio, 2) if peg_ratio < 999 else "N/A",
+                "peg_zone":         "UNDERVALUED" if peg_undervalued else "FAIR" if peg_fair else "OVERVALUED",
+                "debt_to_equity":   round(debt_to_equity, 2),
+                "debt_zone":        "DANGER" if debt_danger else "RISKY" if debt_risky else "SAFE",
+                "lynch_category":   lynch_category,
+                "revenue_growth":   round(revenue_growth, 1),
+                "profit_margin":    round(profit_margin, 1),
+                "insider_pct":      round(insider_pct, 1),
+                "cash_per_share":   round(cash_per_share, 2),
+                "buyback_signal":   buyback_signal,
+                "inventory_warning": inventory_warning,
+            },
             "trend_template": trend_template,
             "trend_score": f"{trend_score}/9",
             "weinstein_stage2": weinstein_stage2,
