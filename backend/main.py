@@ -5,6 +5,7 @@ import pandas as pd
 import requests
 import csv
 import os
+import yfinance as yf
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,7 @@ from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 import shap
 
-print("STOCKSIGNAL v2 — DAVEY EDITION RUNNING")
+print("STOCKSIGNAL v3 — DAVEY + O'NEIL + ALDRIDGE EDITION")
 
 dt_model = None; rf_model = None; lr_model = None; xgb_model = None
 scaler = None; explainer = None
@@ -26,7 +27,7 @@ model_weights = {"dt": 0.25, "rf": 0.25, "lr": 0.25, "xgb": 0.25}
 model_performance = {"dt": [], "rf": [], "lr": [], "xgb": []}
 last_trade_time = None
 paper_trades = []; paper_balance = 10000; open_positions = []
-position_tracker = {}  # Davey timed exit tracker
+position_tracker = {}
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -49,26 +50,26 @@ def prepare_features(df):
     df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
     df.dropna(subset=["Close"], inplace=True)
 
-    # Basic
+    # ── Basic indicators ───────────────────────────────────────────────
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
     delta = df["Close"].diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = (-delta.clip(upper=0)).rolling(14).mean()
-    df["RSI"] = 100 - (100 / (1 + gain / loss))
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    df["RSI"]        = 100 - (100 / (1 + gain / loss))
     df["volatility"] = df["Close"].pct_change().rolling(10).std()
-    df["momentum"] = df["Close"].pct_change(10)
+    df["momentum"]       = df["Close"].pct_change(10)
     df["momentum_short"] = df["Close"].pct_change(3)
     df["momentum_long"]  = df["Close"].pct_change(20)
 
-    # ATR
+    # ── ATR ────────────────────────────────────────────────────────────
     df["high_low"]   = df["High"] - df["Low"]
     df["high_close"] = abs(df["High"] - df["Close"].shift())
     df["low_close"]  = abs(df["Low"]  - df["Close"].shift())
-    df["tr"]  = df[["high_low","high_close","low_close"]].max(axis=1)
-    df["ATR"] = df["tr"].rolling(14).mean()
+    df["tr"]         = df[["high_low","high_close","low_close"]].max(axis=1)
+    df["ATR"]        = df["tr"].rolling(14).mean()
 
-    # ADX — Davey Entry #4
+    # ── ADX — Davey Entry #4 ───────────────────────────────────────────
     plus_dm  = df["High"].diff().clip(lower=0)
     minus_dm = (-df["Low"].diff()).clip(lower=0)
     _plus    = plus_dm.where(plus_dm > minus_dm, 0)
@@ -76,58 +77,45 @@ def prepare_features(df):
     atr14    = df["tr"].rolling(14).mean()
     plus_di  = 100 * (_plus.rolling(14).mean()  / atr14.replace(0, np.nan))
     minus_di = 100 * (_minus.rolling(14).mean() / atr14.replace(0, np.nan))
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
-    df["ADX"] = dx.rolling(14).mean()
-    # ADX Rising — Davey Entry #8
-    # ADX must be increasing for valid trend entries
+    dx       = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    df["ADX"]        = dx.rolling(14).mean()
     df["ADX_rising"] = df["ADX"] > df["ADX"].shift(3)
 
-
-    # Bollinger Bands — Davey Entry #25
-    bb_mid = df["Close"].rolling(20).mean()
-    bb_std = df["Close"].rolling(20).std()
+    # ── Bollinger Bands — Davey Entry #25 ─────────────────────────────
+    bb_mid         = df["Close"].rolling(20).mean()
+    bb_std         = df["Close"].rolling(20).std()
     df["BB_upper"] = bb_mid + 2 * bb_std
     df["BB_lower"] = bb_mid - 2 * bb_std
     df["BB_pos"]   = (df["Close"] - df["BB_lower"]) / (df["BB_upper"] - df["BB_lower"]).replace(0, np.nan)
 
-    # Liquidity filter
-    df["vol_ma20"] = df["Volume"].rolling(20).mean() if "Volume" in df.columns else 1e9
-    df["vol_ratio"] = df["Volume"] / df["vol_ma20"] if "Volume" in df.columns else 1.0
+    # ── Volume & Liquidity ─────────────────────────────────────────────
+    df["vol_ma20"]         = df["Volume"].rolling(20).mean() if "Volume" in df.columns else 1e9
+    df["vol_ratio"]        = df["Volume"] / df["vol_ma20"]   if "Volume" in df.columns else 1.0
+    df["vol_breakout"]     = df["vol_ratio"] > 1.5   # Davey Entry #1
+    df["vol_breakout_oneil"] = df["vol_ratio"] > 1.4 # O'Neil: 40% above
 
-    # Money Flow Index — Davey Entry #23
-    # Combines price + volume — detects institutional activity
+    # ── Money Flow Index — Davey Entry #23 ────────────────────────────
     if "Volume" in df.columns:
-        typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-        raw_money_flow = typical_price * df["Volume"]
-        pos_flow = raw_money_flow.where(typical_price > typical_price.shift(1), 0)
-        neg_flow = raw_money_flow.where(typical_price < typical_price.shift(1), 0)
-        pos_sum = pos_flow.rolling(14).sum()
-        neg_sum = neg_flow.rolling(14).sum()
-        mfi_ratio = pos_sum / neg_sum.replace(0, np.nan)
-        df["MFI"] = 100 - (100 / (1 + mfi_ratio))
+        tp            = (df["High"] + df["Low"] + df["Close"]) / 3
+        raw_mf        = tp * df["Volume"]
+        pos_flow      = raw_mf.where(tp > tp.shift(1), 0)
+        neg_flow      = raw_mf.where(tp < tp.shift(1), 0)
+        mfi_ratio     = pos_flow.rolling(14).sum() / neg_flow.rolling(14).sum().replace(0, np.nan)
+        df["MFI"]     = 100 - (100 / (1 + mfi_ratio))
     else:
         df["MFI"] = 50.0
 
-    # Stochastic Oscillator — Davey Entry #24
-    lowest_14  = df["Low"].rolling(14).min()
-    highest_14 = df["High"].rolling(14).max()
-    df["stoch_k"] = 100 * (df["Close"] - lowest_14) / (highest_14 - lowest_14).replace(0, np.nan)
-    df["stoch_d"] = df["stoch_k"].rolling(3).mean()
+    # ── Stochastic Oscillator — Davey Entry #24 ───────────────────────
+    lowest_14      = df["Low"].rolling(14).min()
+    highest_14     = df["High"].rolling(14).max()
+    df["stoch_k"]  = 100 * (df["Close"] - lowest_14) / (highest_14 - lowest_14).replace(0, np.nan)
+    df["stoch_d"]  = df["stoch_k"].rolling(3).mean()
 
-    # Range Contraction Filter — Davey Entry #41
-    # Yesterday range < 2 days ago range = market compressing before breakout
-    df["daily_range"]     = df["High"] - df["Low"]
-    df["range_contracting"] = df["daily_range"] < df["daily_range"].shift(1)
-
-    # Volume breakout — Davey Entry #1
-    # Strong breakouts need volume 1.5x above average
-    df["vol_breakout"] = df["vol_ratio"] > 1.5
-
-    # Range Contraction — Davey Entry #41
+    # ── Range Contraction — Davey Entry #41 ───────────────────────────
     df["daily_range"]       = df["High"] - df["Low"]
     df["range_contracting"] = df["daily_range"] < df["daily_range"].shift(1)
 
-    # Big Tail Bars — Davey Entry #36
+    # ── Big Tail Bars — Davey Entry #36 ───────────────────────────────
     bar_range  = df["High"] - df["Low"]
     lower_tail = df["Close"] - df["Low"]
     upper_tail = df["High"] - df["Close"]
@@ -142,40 +130,67 @@ def prepare_features(df):
         (df["Close"] < df["Open"])
     )
 
-    # RSI Divergence — Davey Entry #12
-    # Price new high but RSI lower high = bearish divergence (sell signal)
-    # Price new low but RSI higher low = bullish divergence (buy signal)
-    df["price_high_10"] = df["Close"].rolling(10).max()
-    df["rsi_high_10"]   = df["RSI"].rolling(10).max()
-    df["price_low_10"]  = df["Close"].rolling(10).min()
-    df["rsi_low_10"]    = df["RSI"].rolling(10).min()
+    # ── RSI Divergence — Davey Entry #12 ──────────────────────────────
+    df["price_high_10"]      = df["Close"].rolling(10).max()
+    df["rsi_high_10"]        = df["RSI"].rolling(10).max()
+    df["price_low_10"]       = df["Close"].rolling(10).min()
+    df["rsi_low_10"]         = df["RSI"].rolling(10).min()
     df["bearish_divergence"] = (
-        (df["Close"] >= df["price_high_10"] * 0.99) &   # price near 10-bar high
-        (df["RSI"]   <= df["rsi_high_10"]   * 0.97)     # but RSI below its 10-bar high
+        (df["Close"] >= df["price_high_10"] * 0.99) &
+        (df["RSI"]   <= df["rsi_high_10"]   * 0.97)
     )
     df["bullish_divergence"] = (
-        (df["Close"] <= df["price_low_10"]  * 1.01) &   # price near 10-bar low
-        (df["RSI"]   >= df["rsi_low_10"]    * 1.03)     # but RSI above its 10-bar low
+        (df["Close"] <= df["price_low_10"]  * 1.01) &
+        (df["RSI"]   >= df["rsi_low_10"]    * 1.03)
     )
-    # Percentile of closes — Davey Exit #5
+
+    # ── Percentile Exit — Davey Exit #5 ───────────────────────────────
     df["close_pct_rank"] = df["Close"].rolling(5).apply(
         lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False
     )
-    # Correlation Z-Score — Aldridge Chapter 13 Statistical Arbitrage
-    # Measures how far price has deviated from its own 20-day mean
-    # Z-score > 2 = overbought relative to recent self
-    # Z-score < -2 = oversold relative to recent self
+
+    # ── Z-Score — Aldridge Chapter 13 ─────────────────────────────────
     rolling_mean = df["Close"].rolling(20).mean()
     rolling_std  = df["Close"].rolling(20).std()
     df["zscore"] = (df["Close"] - rolling_mean) / rolling_std.replace(0, np.nan)
 
+    # ── O'Neil CANSLIM — L: Leader ────────────────────────────────────
+    df["is_leader"] = (df["Close"] > df["MA50"]) & (df["momentum"] > 0)
+
+    # ── O'Neil CANSLIM — I: Institutional Sponsorship proxy ───────────
+    if "Volume" in df.columns:
+        up_on_vol          = (df["Close"] > df["Close"].shift(1)) & (df["vol_ratio"] > 1.0)
+        dn_on_vol          = (df["Close"] < df["Close"].shift(1)) & (df["vol_ratio"] > 1.0)
+        df["accum_days"]   = up_on_vol.rolling(20).sum()
+        df["distrib_days"] = dn_on_vol.rolling(20).sum()
+        df["institutional_buying"] = df["accum_days"] > df["distrib_days"]
+        # Distribution day counter — O'Neil M factor
+        df["distrib_day"]       = (df["Close"] < df["Close"].shift(1)) & (df["Volume"] > df["Volume"].shift(1))
+        df["distrib_count_25d"] = df["distrib_day"].rolling(25).sum()
+    else:
+        df["accum_days"]         = 10
+        df["distrib_days"]       = 5
+        df["institutional_buying"] = True
+        df["distrib_day"]        = False
+        df["distrib_count_25d"]  = 0
+
+    # ── O'Neil CANSLIM — M: Follow-Through Day ────────────────────────
+    df["rally_day"]      = df["Close"] > df["Close"].shift(1)
+    df["rally_streak"]   = df["rally_day"].rolling(4).sum()
+    df["follow_through"] = (df["rally_streak"] >= 4) & (df["vol_ratio"] > 1.0)
+
+    # ── O'Neil 52-Week High Filter ─────────────────────────────────────
+    df["high_52w"]          = df["High"].rolling(252).max()
+    df["pct_from_52w_high"] = (df["Close"] - df["high_52w"]) / df["high_52w"] * 100
+    df["near_52w_high"]     = df["pct_from_52w_high"] > -25
+
     df.dropna(inplace=True)
     return df
+
 
 @app.on_event("startup")
 def load_models():
     global dt_model, rf_model, lr_model, xgb_model, scaler, explainer
-
     try:
         dt_model  = joblib.load("dt.pkl")
         rf_model  = joblib.load("rf.pkl")
@@ -215,9 +230,9 @@ def _train_from_scratch():
     df.dropna(subset=["target"], inplace=True)
     X = df[["RSI","MA20","MA50","momentum","volatility"]]
     y = df["target"]
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    X_scaled = X_scaled[:-1]; y = y[:-1]
+    scaler    = StandardScaler()
+    X_scaled  = scaler.fit_transform(X)
+    X_scaled  = X_scaled[:-1]; y = y[:-1]
     dt_model  = DecisionTreeClassifier(max_depth=5, random_state=42)
     rf_model  = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
     lr_model  = LogisticRegression(max_iter=1000, random_state=42)
@@ -231,6 +246,7 @@ def _train_from_scratch():
     joblib.dump(lr_model,"lr.pkl"); joblib.dump(xgb_model,"xgb.pkl")
     joblib.dump(scaler,"scaler.pkl")
     print("✅ Models trained and saved")
+
 
 @app.get("/search")
 def search_stock(query: str):
@@ -262,19 +278,20 @@ def search_stock(query: str):
     ]
     return [s for s in data if query.lower() in s["symbol"].lower() or query.lower() in s["name"].lower()]
 
+
 @app.get("/predict")
 def predict(symbol: str = Query("AAPL")):
     global last_trade_time, paper_trades, open_positions, position_tracker
 
-    # Sentiment
+    # ── Sentiment ──────────────────────────────────────────────────────
     try:
         res = requests.get(f"http://127.0.0.1:8001/sentiment?symbol={symbol}", timeout=2)
-        sentiment_score = res.json().get("score", 0)
+        sentiment_score      = res.json().get("score", 0)
         sentiment_score_norm = round((sentiment_score + 1) * 50, 2)
     except:
         sentiment_score = 0; sentiment_score_norm = 50
 
-    # Data
+    # ── Data ───────────────────────────────────────────────────────────
     df = get_stock_data(symbol)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -298,76 +315,126 @@ def predict(symbol: str = Query("AAPL")):
     volatility = float(latest["volatility"])
     atr        = float(latest["ATR"])
 
-    # Davey indicators
-    adx           = float(latest.get("ADX", 25))
-    bb_pos        = float(latest.get("BB_pos", 0.5))
-    bb_upper      = float(latest.get("BB_upper", price * 1.02))
-    bb_lower      = float(latest.get("BB_lower", price * 0.98))
-    mom_short     = float(latest.get("momentum_short", 0))
-    mom_long      = float(latest.get("momentum_long", 0))
-    close_pct_rank= float(latest.get("close_pct_rank", 0.5))
-    vol_ratio     = float(latest.get("vol_ratio", 1.0))
-    vol_breakout      = bool(latest.get("vol_breakout", False))
-    range_contracting = bool(latest.get("range_contracting", False))
-    # Z-Score — Aldridge Statistical Arbitrage
-    zscore = float(latest.get("zscore", 0))
-    zscore_oversold   = zscore < -2.0   # price far below own mean = mean reversion buy
-    zscore_overbought = zscore > 2.0    # price far above own mean = mean reversion sell
-    bull_tail_bar     = bool(latest.get("bull_tail_bar", False))
-    bear_tail_bar     = bool(latest.get("bear_tail_bar", False))
-    mfi = float(latest.get("MFI", 50))
-    mfi_oversold   = mfi < 20   # institutional buying pressurej
-    stoch_k = float(latest.get("stoch_k", 50))
-    stoch_d = float(latest.get("stoch_d", 50))
-    stoch_oversold   = stoch_k < 20 and stoch_d < 20
-    stoch_overbought = stoch_k > 80 and stoch_d > 80
-    mfi_overbought = mfi > 80   # institutional selling pressure
-    adx_rising        = bool(latest.get("ADX_rising", True))
+    # ── Davey indicators ───────────────────────────────────────────────
+    adx            = float(latest.get("ADX", 25))
+    bb_pos         = float(latest.get("BB_pos", 0.5))
+    bb_upper       = float(latest.get("BB_upper", price * 1.02))
+    bb_lower       = float(latest.get("BB_lower", price * 0.98))
+    mom_short      = float(latest.get("momentum_short", 0))
+    mom_long       = float(latest.get("momentum_long", 0))
+    close_pct_rank = float(latest.get("close_pct_rank", 0.5))
+    vol_ratio      = float(latest.get("vol_ratio", 1.0))
+    vol_breakout       = bool(latest.get("vol_breakout", False))
+    adx_rising         = bool(latest.get("ADX_rising", True))
     bearish_divergence = bool(latest.get("bearish_divergence", False))
     bullish_divergence = bool(latest.get("bullish_divergence", False))
+    range_contracting  = bool(latest.get("range_contracting", False))
+    bull_tail_bar      = bool(latest.get("bull_tail_bar", False))
+    bear_tail_bar      = bool(latest.get("bear_tail_bar", False))
 
-    # ADX zones — Davey Entry #4
+    mfi            = float(latest.get("MFI", 50))
+    mfi_oversold   = mfi < 20
+    mfi_overbought = mfi > 80
+
+    stoch_k          = float(latest.get("stoch_k", 50))
+    stoch_d          = float(latest.get("stoch_d", 50))
+    stoch_oversold   = stoch_k < 20 and stoch_d < 20
+    stoch_overbought = stoch_k > 80 and stoch_d > 80
+
+    zscore            = float(latest.get("zscore", 0))
+    zscore_oversold   = zscore < -2.0
+    zscore_overbought = zscore > 2.0
+
+    # ── O'Neil indicators ──────────────────────────────────────────────
+    is_leader          = bool(latest.get("is_leader", False))
+    accum_days         = float(latest.get("accum_days", 10))
+    distrib_days       = float(latest.get("distrib_days", 10))
+    institutional_buying = bool(latest.get("institutional_buying", False))
+    distribution_warning = distrib_days >= 5
+    distrib_count      = float(latest.get("distrib_count_25d", 0))
+    follow_through     = bool(latest.get("follow_through", False))
+    market_top_warning = distrib_count >= 5
+    near_52w_high      = bool(latest.get("near_52w_high", True))
+    pct_from_52w       = float(latest.get("pct_from_52w_high", -10))
+
+    # ── O'Neil CANSLIM — C: Current Quarterly Earnings ────────────────
+    try:
+        ticker = yf.Ticker(symbol)
+        income = ticker.quarterly_financials
+        if income is not None and not income.empty and "Net Income" in income.index:
+            net_income = income.loc["Net Income"].dropna()
+            if len(net_income) >= 5:
+                q_latest    = float(net_income.iloc[0])
+                q_year_ago  = float(net_income.iloc[4])
+                eps_growth  = ((q_latest - q_year_ago) / abs(q_year_ago) * 100) if q_year_ago != 0 else 0
+                q_prev      = float(net_income.iloc[1])
+                q_prev_yago = float(net_income.iloc[5]) if len(net_income) > 5 else q_year_ago
+                eps_growth_prev  = ((q_prev - q_prev_yago) / abs(q_prev_yago) * 100) if q_prev_yago != 0 else 0
+                eps_accelerating = eps_growth > eps_growth_prev and eps_growth > 25
+                eps_decelerating = eps_growth < eps_growth_prev * 0.5 and eps_growth_prev > 20
+            else:
+                eps_growth = 0; eps_accelerating = False; eps_decelerating = False
+        else:
+            eps_growth = 0; eps_accelerating = False; eps_decelerating = False
+    except:
+        eps_growth = 0; eps_accelerating = False; eps_decelerating = False
+
+    # ── O'Neil CANSLIM — A: Annual Earnings + ROE ─────────────────────
+    try:
+        annual = ticker.financials
+        if annual is not None and not annual.empty and "Net Income" in annual.index:
+            net_annual = annual.loc["Net Income"].dropna()
+            if len(net_annual) >= 3:
+                y0 = float(net_annual.iloc[0])
+                y1 = float(net_annual.iloc[1])
+                y2 = float(net_annual.iloc[2])
+                annual_growth_ok   = (y0 > y1 > y2) and y0 > 0
+                annual_growth_rate = ((y0 - y2) / abs(y2) * 50) if y2 != 0 else 0
+            else:
+                annual_growth_ok = False; annual_growth_rate = 0
+        else:
+            annual_growth_ok = False; annual_growth_rate = 0
+        roe        = float(ticker.info.get("returnOnEquity", 0) or 0) * 100
+        roe_strong = roe > 17
+    except:
+        annual_growth_ok = False; annual_growth_rate = 0
+        roe = 0; roe_strong = False
+
+    # ── ADX zones ─────────────────────────────────────────────────────
     adx_flat      = adx < 20
     adx_trending  = 20 <= adx <= 35
     adx_exhausted = adx > 40
 
-    # Liquidity check — volume must be > 50% of 20-day average
     liquid = vol_ratio >= 0.5
 
-    # ATR breakout filter — Davey Entry #5
     prev_close      = float(prev["Close"])
     atr_breakout_up = price > (prev_close + 1.0 * atr)
     atr_breakout_dn = price < (prev_close - 1.0 * atr)
 
-    # Bollinger zones — Davey Entry #25
     bb_oversold   = bb_pos < 0.15
     bb_overbought = bb_pos > 0.85
 
-    # Three Amigos — Davey Entry #27
     three_amigos_buy  = adx > 25 and rsi < 50 and mom_short > 0 and mom_long < 0
     three_amigos_sell = adx > 25 and rsi > 50 and mom_short < 0 and mom_long > 0
 
-    # Quick Pullback — Davey Entry #32
     if len(df) >= 3:
-        h0 = float(df["High"].iloc[-1]); h1 = float(df["High"].iloc[-2]); h2 = float(df["High"].iloc[-3])
-        l0 = float(df["Low"].iloc[-1]);  l1 = float(df["Low"].iloc[-2]);  l2 = float(df["Low"].iloc[-3])
+        h1 = float(df["High"].iloc[-2]); h2 = float(df["High"].iloc[-3])
+        l1 = float(df["Low"].iloc[-2]);  l2 = float(df["Low"].iloc[-3])
         pullback_buy  = (h2 > h1) and (price > h2)
         pullback_sell = (l2 < l1) and (price < l2)
     else:
         pullback_buy = pullback_sell = False
 
-    # New High Consecutive — Davey Entry #37
     if len(df) >= 11:
         c0=float(df["Close"].iloc[-1]); c1=float(df["Close"].iloc[-2])
         c2=float(df["Close"].iloc[-3]); c3=float(df["Close"].iloc[-4])
-        highest_10 = float(df["High"].iloc[-11:-1].max())
-        lowest_10  = float(df["Low"].iloc[-11:-1].min())
+        highest_10       = float(df["High"].iloc[-11:-1].max())
+        lowest_10        = float(df["Low"].iloc[-11:-1].min())
         new_high_confirm = c0 > highest_10 and c0 > c1 and c0 > c3 and c1 > c2
         new_low_confirm  = c0 < lowest_10  and c0 < c1 and c0 < c3 and c1 < c2
     else:
         new_high_confirm = new_low_confirm = False
 
-    # Consecutive Closes Exit — Davey Exit #6
     if len(df) >= 4:
         c0=float(df["Close"].iloc[-1]); c1=float(df["Close"].iloc[-2])
         c2=float(df["Close"].iloc[-3]); c3=float(df["Close"].iloc[-4])
@@ -376,48 +443,32 @@ def predict(symbol: str = Query("AAPL")):
     else:
         three_up_closes = three_down_closes = False
 
-    # Percentile Exit — Davey Exit #5
-    pct_exit_long  = close_pct_rank < 0.5
-    pct_exit_short = close_pct_rank > 0.5
+    pct_exit_long = close_pct_rank < 0.5
 
-    # Timed Exit — Davey Exit #3
-    tracker = position_tracker.get(symbol, {})
+    # ── Timed Exit + Profit Tracker — Davey Exit #3 + #8 + #11 ───────
+    tracker      = position_tracker.get(symbol, {})
     bars_held    = tracker.get("bars_held", 0)
     entry_price  = tracker.get("entry_price", price)
     peak_profit  = tracker.get("peak_profit", 0.0)
     direction    = tracker.get("direction", "")
 
-    # Update peak profit — Davey Exit #8
-    if direction == "BUY":
-        current_profit = price - entry_price
-    elif direction == "SELL":
-        current_profit = entry_price - price
-    else:
-        current_profit = 0.0
-
+    current_profit = (price - entry_price) if direction == "BUY" else (entry_price - price) if direction == "SELL" else 0.0
     if current_profit > peak_profit:
         peak_profit = current_profit
         if symbol in position_tracker:
             position_tracker[symbol]["peak_profit"] = peak_profit
 
-    # Don't Give It All Back — exit if gave back >50% of peak profit
-    # Tiered Profit Protection — Davey Exit #11
-    # As profit grows, protect more of it
     if peak_profit <= 0:
         gave_back_too_much = False
     elif peak_profit < atr * 1.0:
-        # Small profit: protect 40%
         gave_back_too_much = current_profit < peak_profit * 0.40 and bars_held > 3
     elif peak_profit < atr * 2.0:
-        # Medium profit: protect 60%
         gave_back_too_much = current_profit < peak_profit * 0.60 and bars_held > 3
     else:
-        # Large profit: protect 80%
         gave_back_too_much = current_profit < peak_profit * 0.80 and bars_held > 3
 
     timed_exit_triggered = bars_held >= 10
 
-    # Original breakout levels
     recent_high = float(df["High"].rolling(20).max().iloc[-2])
     recent_low  = float(df["Low"].rolling(20).min().iloc[-2])
     is_breakout_up   = price > recent_high
@@ -425,12 +476,11 @@ def predict(symbol: str = Query("AAPL")):
     valid_breakout_up   = is_breakout_up   and price > float(prev["High"]) and rsi > 50
     valid_breakout_down = is_breakout_down and price < float(prev["Low"])  and rsi < 50
 
-    # Regime
     if   ma20 > ma50 and volatility > 0.01: regime = "TREND_UP"
     elif ma20 < ma50 and volatility > 0.01: regime = "TREND_DOWN"
     else:                                   regime = "RANGE"
 
-    # ML
+    # ── ML ─────────────────────────────────────────────────────────────
     if dt_model is None: return {"error": "Models not trained yet"}
     feat_df  = pd.DataFrame([latest[["RSI","MA20","MA50","momentum","volatility"]]])
     features = scaler.transform(feat_df)
@@ -456,8 +506,10 @@ def predict(symbol: str = Query("AAPL")):
     votes     = dt_pred + rf_pred + lr_pred + xgb_pred
     agreement = f"{votes}/4 models bullish"
 
-    # Signals
+    # ── Signals ────────────────────────────────────────────────────────
     signals, score = [], 0
+
+    # Basic
     if ma20 > ma50: signals.append("MA20 > MA50 (Bullish)"); score += 1
     else:           signals.append("MA20 < MA50 (Bearish)"); score -= 1
     if rsi < 30:    signals.append("RSI Oversold"); score += 2
@@ -465,160 +517,164 @@ def predict(symbol: str = Query("AAPL")):
     else:           signals.append("RSI Neutral")
     if momentum > 0: signals.append("Momentum Positive"); score += 1
     else:            signals.append("Momentum Negative"); score -= 1
-    if mfi_oversold:
-        signals.append(f"MFI Oversold {mfi:.1f} — Institutional Buying [Davey #23]"); score += 2
-    elif mfi_overbought:
-        signals.append(f"MFI Overbought {mfi:.1f} — Institutional Selling [Davey #23]"); score -= 2
-
-    if stoch_oversold:
-        signals.append(f"Stochastic Oversold {stoch_k:.1f} — Buy Zone [Davey #24]"); score += 1
-    elif stoch_overbought:
-        signals.append(f"Stochastic Overbought {stoch_k:.1f} — Sell Zone [Davey #24]"); score -= 1
 
     # Davey signals
-    if adx_flat:      signals.append(f"ADX Low {adx:.1f} — Breakout Setup [Davey #4]"); score += 1
+    if adx_flat:       signals.append(f"ADX Low {adx:.1f} — Breakout Setup [Davey #4]"); score += 1
     elif adx_trending: signals.append(f"ADX Trending {adx:.1f} — Momentum Zone [Davey #4]")
     elif adx_exhausted: signals.append(f"ADX Exhausted {adx:.1f} — Avoid [Davey #4]"); score -= 2
-    if bb_oversold:   signals.append("Near Bollinger Lower Band [Davey #25]"); score += 1
+    if bb_oversold:     signals.append("Near Bollinger Lower Band [Davey #25]"); score += 1
     elif bb_overbought: signals.append("Near Bollinger Upper Band [Davey #25]"); score -= 1
-    if three_amigos_buy:  signals.append("Three Amigos BUY [Davey #27]"); score += 2
+    if three_amigos_buy:   signals.append("Three Amigos BUY [Davey #27]"); score += 2
     elif three_amigos_sell: signals.append("Three Amigos SELL [Davey #27]"); score -= 2
-    if pullback_buy:  signals.append("Quick Pullback Continuation [Davey #32]"); score += 2
+    if pullback_buy:    signals.append("Quick Pullback Continuation [Davey #32]"); score += 2
     elif pullback_sell: signals.append("Quick Pullback SELL [Davey #32]"); score -= 2
     if new_high_confirm: signals.append("New High 4/4 Momentum Confirmed [Davey #37]"); score += 2
     elif new_low_confirm: signals.append("New Low 4/4 Momentum Confirmed [Davey #37]"); score -= 2
-    if atr_breakout_up: signals.append("ATR Significant Breakout UP [Davey #5]"); score += 1
+    if atr_breakout_up:  signals.append("ATR Significant Breakout UP [Davey #5]"); score += 1
     elif atr_breakout_dn: signals.append("ATR Significant Breakout DOWN [Davey #5]"); score -= 1
-    if not liquid:    signals.append("LOW LIQUIDITY — Volume below average"); score -= 1
-    if range_contracting:
-        signals.append("Range Contracting — Breakout Setup [Davey #41]"); score += 1
-    if zscore_oversold:
-        signals.append(f"Z-Score Oversold {zscore:.2f} — Mean Reversion Setup [Aldridge]"); score += 2
-    elif zscore_overbought:
-        signals.append(f"Z-Score Overbought {zscore:.2f} — Mean Reversion Setup [Aldridge]"); score -= 2
-    if bull_tail_bar:
-        signals.append("Bull Tail Bar — Institutional Rejection [Davey #36]"); score += 2
-    if bear_tail_bar:
-        signals.append("Bear Tail Bar — Distribution Signal [Davey #36]"); score -= 2
-    if three_up_closes:   signals.append("⚠️ 3 Consecutive Up Closes — Exit Signal [Davey #6]")
-    if three_down_closes: signals.append("⚠️ 3 Consecutive Down Closes — Exit Signal [Davey #6]")
-    if timed_exit_triggered: signals.append(f"⚠️ Held {bars_held} days — Timed Exit [Davey #3]")
-    if gave_back_too_much:
-        signals.append(f"⚠️ Gave back >50% of peak profit — Exit [Davey #8]")
-    if vol_breakout:
-        signals.append("Volume Breakout — 1.5x average volume [Davey #1]"); score += 1
-    if adx_rising:
-        signals.append("ADX Rising — Trend strengthening [Davey #8]"); score += 1
-    if bullish_divergence:
-        signals.append("Bullish RSI Divergence — Price low, RSI higher [Davey #12]"); score += 2
-    if bearish_divergence:
-        signals.append("Bearish RSI Divergence — Price high, RSI lower [Davey #12]"); score -= 2
+    if not liquid:       signals.append("LOW LIQUIDITY — Volume below average"); score -= 1
+    if range_contracting: signals.append("Range Contracting — Breakout Setup [Davey #41]"); score += 1
+    if bull_tail_bar:    signals.append("Bull Tail Bar — Institutional Rejection [Davey #36]"); score += 2
+    if bear_tail_bar:    signals.append("Bear Tail Bar — Distribution Signal [Davey #36]"); score -= 2
+    if mfi_oversold:     signals.append(f"MFI Oversold {mfi:.1f} — Institutional Buying [Davey #23]"); score += 2
+    elif mfi_overbought: signals.append(f"MFI Overbought {mfi:.1f} — Institutional Selling [Davey #23]"); score -= 2
+    if stoch_oversold:   signals.append(f"Stochastic Oversold {stoch_k:.1f} [Davey #24]"); score += 1
+    elif stoch_overbought: signals.append(f"Stochastic Overbought {stoch_k:.1f} [Davey #24]"); score -= 1
+    if vol_breakout:     signals.append("Volume Breakout 1.5x [Davey #1]"); score += 1
+    if adx_rising:       signals.append("ADX Rising — Trend Strengthening [Davey #8]"); score += 1
+    if bullish_divergence: signals.append("Bullish RSI Divergence [Davey #12]"); score += 2
+    if bearish_divergence: signals.append("Bearish RSI Divergence [Davey #12]"); score -= 2
+    if zscore_oversold:   signals.append(f"Z-Score Oversold {zscore:.2f} [Aldridge]"); score += 2
+    elif zscore_overbought: signals.append(f"Z-Score Overbought {zscore:.2f} [Aldridge]"); score -= 2
 
-    technical_score = round(((score + 8) / 16) * 100, 2)
+    # O'Neil signals
+    if eps_accelerating:   signals.append(f"EPS Accelerating +{eps_growth:.0f}% YoY [O'Neil C]"); score += 3
+    if eps_decelerating:   signals.append("EPS Decelerating — Caution [O'Neil C]"); score -= 2
+    if annual_growth_ok:   signals.append("3 Years Consecutive Earnings Growth [O'Neil A]"); score += 2
+    if roe_strong:         signals.append(f"ROE {roe:.1f}% > 17% [O'Neil A]"); score += 1
+    if institutional_buying: signals.append(f"Accumulation {accum_days:.0f} > Distribution {distrib_days:.0f} [O'Neil I]"); score += 2
+    if distribution_warning: signals.append(f"⚠️ {distrib_days:.0f} Distribution Days [O'Neil M]"); score -= 3
+    if market_top_warning: signals.append("⛔ 5+ Distribution Days — Market Top Warning [O'Neil M]"); score -= 3
+    if follow_through:     signals.append("Follow-Through Day — Uptrend Confirmed [O'Neil M]"); score += 2
+    if near_52w_high:      signals.append(f"Near 52W High ({pct_from_52w:.1f}%) [O'Neil N]"); score += 1
+    else:                  signals.append(f"Far from 52W High ({pct_from_52w:.1f}%) — Avoid [O'Neil]"); score -= 1
+    if is_leader:          signals.append("Outperforming Market — Leader [O'Neil L]"); score += 1
+
+    # Exit signals
+    if three_up_closes:      signals.append("⚠️ 3 Consecutive Up Closes — Exit Signal [Davey #6]")
+    if three_down_closes:    signals.append("⚠️ 3 Consecutive Down Closes — Exit Signal [Davey #6]")
+    if timed_exit_triggered: signals.append(f"⚠️ Held {bars_held} days — Timed Exit [Davey #3]")
+    if gave_back_too_much:   signals.append("⚠️ Gave back peak profit — Exit [Davey #8/#11]")
+
+    technical_score = round(((score + 12) / 24) * 100, 2)
     confidence = round(0.5 * ml_confidence + 0.3 * technical_score + 0.2 * sentiment_score_norm, 2)
 
-    # ═══════════════════════════════════════
-    # DECISION ENGINE — Full Davey Stack
-    # ═══════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
+    # DECISION ENGINE
+    # ═══════════════════════════════════════════════════════════════════
     prediction = "HOLD"
 
-    # L1: Timed exit override
+    # L1: Timed exit
     if timed_exit_triggered:
         prediction = "HOLD"
         position_tracker.pop(symbol, None)
 
-    # L2: ADX exhausted — no new entries
+    # L2: ADX exhausted
     elif adx_exhausted:
         prediction = "HOLD"
 
-    # L3: Liquidity — skip illiquid stocks
+    # L3: Liquidity
     elif not liquid:
         prediction = "HOLD"
 
     else:
+        # ── TREND_UP ──────────────────────────────────────────────────
         if regime == "TREND_UP":
-            buy = False
-            # A: Breakout + ADX + ATR + Volume (Davey #1 + #4 + #5)
-            if valid_breakout_up and (adx_flat or adx_trending) and atr_breakout_up and vol_breakout and range_contracting: buy = True
-            # B: Three Amigos + ADX Rising (Davey #27 + #8)
-            if three_amigos_buy and score_ml >= 0.5 and adx_rising: buy = True
-            # C: Quick Pullback (Davey #32)
-            if pullback_buy and score_ml >= 0.5 and (adx_flat or adx_trending): buy = True
-            # D: New High confirmation (Davey #37)
-            if new_high_confirm and score_ml >= 0.6 and vol_breakout: buy = True
-            # E: Bullish divergence — strong reversal signal (Davey #12)
-            if bullish_divergence and score_ml >= 0.5: buy = True
-            # F: Bull Tail Bar (Davey #36)
-            if bull_tail_bar and score_ml >= 0.5: buy = True
-            if buy: prediction = "BUY"
+            if market_top_warning:
+                prediction = "HOLD"
+            else:
+                buy = False
+                if valid_breakout_up and (adx_flat or adx_trending) and atr_breakout_up and vol_breakout and range_contracting: buy = True
+                if three_amigos_buy and score_ml >= 0.5 and adx_rising: buy = True
+                if pullback_buy and score_ml >= 0.5 and (adx_flat or adx_trending): buy = True
+                if new_high_confirm and score_ml >= 0.6 and vol_breakout: buy = True
+                if bullish_divergence and score_ml >= 0.5: buy = True
+                if bull_tail_bar and score_ml >= 0.5: buy = True
+                if buy: prediction = "BUY"
 
+        # ── TREND_DOWN ────────────────────────────────────────────────
         elif regime == "TREND_DOWN":
             sell = False
+            if market_top_warning: sell = True
             if valid_breakout_down and (adx_flat or adx_trending) and atr_breakout_dn and vol_breakout: sell = True
             if three_amigos_sell and score_ml <= 0.5 and adx_rising: sell = True
             if pullback_sell and score_ml <= 0.5 and (adx_flat or adx_trending): sell = True
             if new_low_confirm and score_ml <= 0.4 and vol_breakout: sell = True
-            # Bearish divergence — strong reversal signal (Davey #12)
             if bearish_divergence and score_ml <= 0.5: sell = True
             if sell: prediction = "SELL"
 
+        # ── RANGE ─────────────────────────────────────────────────────
         elif regime == "RANGE":
-            if (rsi < 30 or bb_oversold) and mfi_oversold:   prediction = "BUY"
-            elif (rsi > 70 or bb_overbought) and mfi_overbought: prediction = "SELL"
-            elif rsi < 30 and bb_oversold:  prediction = "BUY"
-            elif rsi > 70 and bb_overbought: prediction = "SELL"
-            elif rsi < 30:                  prediction = "BUY"
-            elif rsi > 70:                  prediction = "SELL"
-            elif zscore_oversold and rsi < 40:   prediction = "BUY"
-            elif zscore_overbought and rsi > 60: prediction = "SELL"
-        # Exit overrides
-        if prediction == "BUY"  and three_down_closes: prediction = "HOLD"
-        if prediction == "SELL" and three_up_closes:   prediction = "HOLD"
-        if prediction == "BUY"  and pct_exit_long and bars_held > 5: prediction = "HOLD"
+            if (rsi < 30 or bb_oversold) and mfi_oversold:        prediction = "BUY"
+            elif (rsi > 70 or bb_overbought) and mfi_overbought:   prediction = "SELL"
+            elif rsi < 30 and bb_oversold:                         prediction = "BUY"
+            elif rsi > 70 and bb_overbought:                       prediction = "SELL"
+            elif rsi < 30:                                         prediction = "BUY"
+            elif rsi > 70:                                         prediction = "SELL"
+            elif zscore_oversold and rsi < 40:                     prediction = "BUY"
+            elif zscore_overbought and rsi > 60:                   prediction = "SELL"
 
-    # Don't Give It All Back exit (Davey Exit #8)
-    if gave_back_too_much: prediction = "HOLD"
-    # Bearish divergence overrides BUY (Davey #12)
-    if prediction == "BUY"  and bearish_divergence: prediction = "HOLD"
-    if prediction == "SELL" and bullish_divergence: prediction = "HOLD"
+        # ── Exit overrides ────────────────────────────────────────────
+        if prediction == "BUY"  and three_down_closes:                   prediction = "HOLD"
+        if prediction == "SELL" and three_up_closes:                      prediction = "HOLD"
+        if prediction == "BUY"  and pct_exit_long and bars_held > 5:     prediction = "HOLD"
+        if gave_back_too_much:                                            prediction = "HOLD"
+        if prediction == "BUY"  and bearish_divergence:                   prediction = "HOLD"
+        if prediction == "SELL" and bullish_divergence:                   prediction = "HOLD"
 
-    # Standard filters
+    # ── Standard filters ──────────────────────────────────────────────
     if confidence < 52:    prediction = "HOLD"
     if volatility < 0.005: prediction = "HOLD"
+
+    # ── O'Neil 8% Hard Stop ───────────────────────────────────────────
+    if symbol in position_tracker:
+        ep  = position_tracker[symbol].get("entry_price", price)
+        dir_p = position_tracker[symbol].get("direction", "")
+        if dir_p == "BUY"  and (ep - price) / ep * 100 >= 8:
+            prediction = "HOLD"
+            signals.append("⛔ 8% Hard Stop — O'Neil Rule")
+            position_tracker.pop(symbol, None)
+        elif dir_p == "SELL" and (price - ep) / ep * 100 >= 8:
+            prediction = "HOLD"
+            signals.append("⛔ 8% Hard Stop — O'Neil Rule")
+            position_tracker.pop(symbol, None)
+
     if prediction == "BUY"  and sentiment_score < -0.2: prediction = "HOLD"
     if prediction == "SELL" and sentiment_score >  0.2: prediction = "HOLD"
 
-    # Serial Correlation — Davey Entry #16
-    # Swing trading needs days not minutes between trades
-    # After loss: wait 5 days. After win: wait 2 days.
-    last_trade = position_tracker.get("_last_trade", {})
-    last_trade_result = last_trade.get("result", "none")
-    last_trade_date   = last_trade.get("date", None)
-
+    # ── Serial Correlation — Davey Entry #16 ─────────────────────────
+    last_trade_data = position_tracker.get("_last_trade", {})
+    last_trade_date = last_trade_data.get("date", None)
     if last_trade_date:
         days_since = (datetime.now() - last_trade_date).days
-        wait_days = 5 if last_trade_result == "loss" else 2
+        wait_days  = 5 if last_trade_data.get("result","none") == "loss" else 2
         if days_since < wait_days:
             prediction = "HOLD"
 
-    # Update position tracker
+    # ── Update tracker ────────────────────────────────────────────────
     if prediction in ("BUY","SELL"):
         last_trade_time = datetime.now()
         position_tracker[symbol] = {
-            "bars_held":   0,
-            "entry_price": price,
-            "direction":   prediction,
-            "peak_profit": 0.0,
+            "bars_held": 0, "entry_price": price,
+            "direction": prediction, "peak_profit": 0.0,
         }
         position_tracker["_last_trade"] = {
-            "date":   datetime.now(),
-            "result": "win",   # updated when position closes
-            "symbol": symbol,
+            "date": datetime.now(), "result": "win", "symbol": symbol,
         }
     elif symbol in position_tracker:
         position_tracker[symbol]["bars_held"] += 1
 
-    # Trade plan
+    # ── Trade plan ────────────────────────────────────────────────────
     support    = float(df["Low"].rolling(20).min().iloc[-1])
     resistance = float(df["High"].rolling(20).max().iloc[-1])
     capital    = 10000; risk_per_trade = 0.02
@@ -631,39 +687,38 @@ def predict(symbol: str = Query("AAPL")):
         entry = stop_loss = target = "-"
 
     if prediction != "HOLD":
-        risk_pu = abs(entry - stop_loss)
+        risk_pu       = abs(entry - stop_loss)
         position_size = int((capital * risk_per_trade) / risk_pu) if risk_pu > 0 else 0
         capital_used  = round(position_size * entry, 2)
-        rr = round(abs(target - entry) / abs(entry - stop_loss), 2) if abs(entry - stop_loss) else 0
+        rr            = round(abs(target - entry) / abs(entry - stop_loss), 2) if abs(entry - stop_loss) else 0
     else:
         position_size = capital_used = 0; rr = "-"
 
-    # Paper trade
     if prediction in ("BUY","SELL"):
         trade = {"time": str(datetime.now()), "symbol": symbol, "prediction": prediction,
                  "price": round(price,2), "confidence": confidence, "regime": regime,
                  "target": target, "stop_loss": stop_loss, "position_size": position_size}
         paper_trades.append(trade); open_positions.append(trade)
 
-    # AI
-    trend = "Uptrend" if ma20 > ma50 else "Downtrend"
+    # ── AI analysis ───────────────────────────────────────────────────
+    trend  = "Uptrend" if ma20 > ma50 else "Downtrend"
     reason = []
-    if ma20 > ma50:          reason.append("Bullish trend (MA crossover)")
-    else:                    reason.append("Bearish trend (MA crossover)")
-    if rsi < 30:             reason.append("Stock oversold")
-    elif rsi > 70:           reason.append("Stock overbought")
-    if momentum > 0:         reason.append("Positive momentum")
-    else:                    reason.append("Negative momentum")
-    if three_amigos_buy:     reason.append("Three Amigos BUY pattern [Davey]")
-    if pullback_buy:         reason.append("Quick Pullback continuation [Davey]")
-    if new_high_confirm:     reason.append("New high 4/4 momentum [Davey]")
-    if adx_flat:             reason.append("ADX low — clean breakout setup [Davey]")
-    if not liquid:           reason.append("LOW LIQUIDITY — trade with caution")
+    if ma20 > ma50:      reason.append("Bullish trend")
+    else:                reason.append("Bearish trend")
+    if rsi < 30:         reason.append("RSI oversold")
+    elif rsi > 70:       reason.append("RSI overbought")
+    if momentum > 0:     reason.append("Positive momentum")
+    if three_amigos_buy: reason.append("Three Amigos BUY [Davey]")
+    if pullback_buy:     reason.append("Quick Pullback [Davey]")
+    if new_high_confirm: reason.append("New High 4/4 [Davey]")
+    if eps_accelerating: reason.append(f"EPS +{eps_growth:.0f}% [O'Neil]")
+    if annual_growth_ok: reason.append("3Y earnings growth [O'Neil]")
+    if not liquid:       reason.append("LOW LIQUIDITY")
 
-    ai_analysis = analyze_stock_ai(symbol, trend, round(rsi,2), prediction, confidence)
+    ai_analysis  = analyze_stock_ai(symbol, trend, round(rsi,2), prediction, confidence)
     ai_analysis += "\n\nReasons:\n" + ", ".join(reason)
 
-    info = get_stock_info(symbol)
+    info       = get_stock_info(symbol)
     best_model = max([("Decision Tree",dt_prob),("Random Forest",rf_prob),
                       ("Logistic",lr_prob),("XGBoost",xgb_prob)], key=lambda x: x[1])[0]
 
@@ -683,6 +738,14 @@ def predict(symbol: str = Query("AAPL")):
         "breakout": {"recent_high": recent_high, "recent_low": recent_low,
                      "is_breakout_up": is_breakout_up, "is_breakout_down": is_breakout_down},
         "breakout_quality": {"valid_up": valid_breakout_up, "valid_down": valid_breakout_down},
+        "fundamental": {
+            "eps_growth":        round(eps_growth, 2),
+            "eps_accelerating":  eps_accelerating,
+            "eps_decelerating":  eps_decelerating,
+            "annual_growth_ok":  annual_growth_ok,
+            "roe":               round(roe, 2),
+            "roe_strong":        roe_strong,
+        },
         "davey_signals": {
             "adx": round(adx,2),
             "adx_zone": "FLAT" if adx_flat else "TRENDING" if adx_trending else "EXHAUSTED",
@@ -695,7 +758,10 @@ def predict(symbol: str = Query("AAPL")):
             "three_up_closes": three_up_closes, "three_down_closes": three_down_closes,
             "timed_exit": timed_exit_triggered, "bars_held": bars_held,
             "liquid": liquid, "vol_ratio": round(vol_ratio,2),
-            "trailing_stop": round(price - (2.0 * atr), 2) if prediction == "BUY" else round(price + (2.0 * atr), 2) if prediction == "SELL" else "-",
+            "near_52w_high": near_52w_high, "pct_from_52w": round(pct_from_52w,2),
+            "market_top_warning": market_top_warning, "follow_through": follow_through,
+            "institutional_buying": institutional_buying,
+            "trailing_stop": round(price-(2.0*atr),2) if prediction=="BUY" else round(price+(2.0*atr),2) if prediction=="SELL" else "-",
         },
         "models": {"decision_tree": "BUY" if dt_pred==1 else "SELL",
                    "random_forest": "BUY" if rf_pred==1 else "SELL",
@@ -705,6 +771,7 @@ def predict(symbol: str = Query("AAPL")):
         "explainability": shap_sorted,
         "market_structure": {"support": round(support,2), "resistance": round(resistance,2), "atr": round(atr,2)},
     }
+
 
 @app.get("/top-opportunity")
 def top_opportunity():
@@ -724,9 +791,9 @@ def top_opportunity():
                                  "prediction": res["prediction"]})
         except: continue
     results.sort(key=lambda x: x["confidence"], reverse=True)
-    top5 = results[:5]
+    top5       = results[:5]
     total_conf = sum(s["confidence"] for s in top5) or 1
-    capital = 10000
+    capital    = 10000
     return {
         "total_capital": capital,
         "portfolio": [{"symbol": s["symbol"], "prediction": s["prediction"],
@@ -735,6 +802,7 @@ def top_opportunity():
                         "capital_allocated": round(capital * s["confidence"]/total_conf, 2)}
                        for s in top5]
     }
+
 
 @app.get("/backtest")
 def backtest(symbol: str = "AAPL"):
@@ -748,45 +816,42 @@ def backtest(symbol: str = "AAPL"):
     for i in range(50, len(df)-1):
         row = df.iloc[i].copy()
         feat = pd.DataFrame([row[["RSI","MA20","MA50","momentum","volatility"]]])
-        f = scaler.transform(feat)
-        score_ml = (dt_model.predict(f)[0]*model_weights["dt"] +
-                    rf_model.predict(f)[0]*model_weights["rf"] +
-                    lr_model.predict(f)[0]*model_weights["lr"] +
-                    xgb_model.predict(f)[0]*model_weights["xgb"])
-        pred = 1 if score_ml >= 0.5 else 0
-        cur = float(row["Close"]); nxt = float(df.iloc[i+1]["Close"])
-        actual = 1 if nxt > cur else 0
-        if pred == actual: wins += 1
-        else: losses += 1
-        slippage = 0.002  # 0.2% per trade — from Aldridge Chapter 19
+        f    = scaler.transform(feat)
+        sc   = (dt_model.predict(f)[0]*model_weights["dt"] +
+                rf_model.predict(f)[0]*model_weights["rf"] +
+                lr_model.predict(f)[0]*model_weights["lr"] +
+                xgb_model.predict(f)[0]*model_weights["xgb"])
+        pred = 1 if sc >= 0.5 else 0
+        cur  = float(row["Close"]); nxt = float(df.iloc[i+1]["Close"])
+        if pred == 1: wins += 1 if nxt > cur else 0; losses += 0 if nxt > cur else 1
+        else:         wins += 1 if nxt < cur else 0; losses += 0 if nxt < cur else 1
+        slip = 0.002
         if pred == 1:
-            entry_p = cur * (1 + slippage)
-            exit_p  = nxt * (1 - slippage)
-            change  = (exit_p - entry_p) / entry_p
+            change = (nxt*(1-slip) - cur*(1+slip)) / (cur*(1+slip))
         else:
-            entry_p = cur * (1 - slippage)
-            exit_p  = nxt * (1 + slippage)
-            change  = (entry_p - exit_p) / entry_p
+            change = (cur*(1-slip) - nxt*(1+slip)) / (cur*(1-slip))
         profit += 1000 * change
     total = wins + losses
+    sharpe_est = round(profit / (1000 * total) / 0.02, 2) if total else 0
     return {"symbol": symbol, "accuracy": round(wins/total*100,2) if total else 0,
             "total_trades": total, "wins": wins, "losses": losses,
             "profit": round(profit,2), "final_capital": round(10000+profit,2),
-            "sharpe_benchmark": "Target > 1.0 (yours: " + str(round(profit / (1000 * total) / 0.02, 2) if total else 0) + ")"}
+            "sharpe_benchmark": f"Target > 1.0 (yours: {sharpe_est})"}
+
 
 @app.get("/simulate-profit")
 def simulate_profit(symbol: str = "AAPL"):
-    df = get_stock_data(symbol)
-    df = prepare_features(df)
+    df = get_stock_data(symbol); df = prepare_features(df)
     capital = 10000
     for i in range(50, len(df)-1):
         row = df.iloc[i]
         feat = pd.DataFrame([row[["RSI","MA20","MA50","momentum","volatility"]]])
-        f = scaler.transform(feat)
+        f    = scaler.transform(feat)
         pred = rf_model.predict(f)[0]
-        nxt = float(df.iloc[i+1]["Close"]); cur = float(row["Close"])
+        nxt  = float(df.iloc[i+1]["Close"]); cur = float(row["Close"])
         capital += (nxt-cur) if pred==1 else (cur-nxt)
     return {"final_capital": round(capital,2), "profit": round(capital-10000,2)}
+
 
 @app.get("/model-stats")
 def model_stats(symbol: str = "AAPL"):
@@ -799,9 +864,9 @@ def model_stats(symbol: str = "AAPL"):
     if len(df) < 100: return {"error": "Not enough data"}
     y_true=[]; dt_p=[]; rf_p=[]; lr_p=[]; xgb_p=[]
     for i in range(50, len(df)-1):
-        row = df.iloc[i].copy()
+        row  = df.iloc[i].copy()
         feat = pd.DataFrame([row[["RSI","MA20","MA50","momentum","volatility"]]])
-        f = scaler.transform(feat)
+        f    = scaler.transform(feat)
         actual = 1 if float(df.iloc[i+1]["Close"]) > float(row["Close"]) else 0
         y_true.append(actual)
         dt_p.append(dt_model.predict(f)[0]); rf_p.append(rf_model.predict(f)[0])
@@ -820,6 +885,7 @@ def model_stats(symbol: str = "AAPL"):
             "random_forest_cm": confusion_matrix(y_true,rf_p).tolist(),
             "logistic_cm":      confusion_matrix(y_true,lr_p).tolist()}
 
+
 @app.get("/portfolio-backtest")
 def portfolio_backtest(mode: str = "simple"):
     symbols = ["AAPL","TSLA","MSFT","GOOGL","AMZN","RELIANCE.NS","TCS.NS","INFY.NS"]
@@ -829,13 +895,13 @@ def portfolio_backtest(mode: str = "simple"):
             try:
                 df = get_stock_data(s); df = prepare_features(df)
                 if len(df) < 60: continue
-                row = df.iloc[-2]
+                row  = df.iloc[-2]
                 feat = pd.DataFrame([row[["RSI","MA20","MA50","momentum","volatility"]]])
-                f = scaler.transform(feat)
-                sc = (dt_model.predict(f)[0]*model_weights["dt"] +
-                      rf_model.predict(f)[0]*model_weights["rf"] +
-                      lr_model.predict(f)[0]*model_weights["lr"] +
-                      xgb_model.predict(f)[0]*model_weights["xgb"])
+                f    = scaler.transform(feat)
+                sc   = (dt_model.predict(f)[0]*model_weights["dt"] +
+                        rf_model.predict(f)[0]*model_weights["rf"] +
+                        lr_model.predict(f)[0]*model_weights["lr"] +
+                        xgb_model.predict(f)[0]*model_weights["xgb"])
                 if sc >= 0.55: pred=1
                 elif sc < 0.45: pred=0
                 else: continue
@@ -858,13 +924,13 @@ def portfolio_backtest(mode: str = "simple"):
                 df = cache.get(s)
                 if df is None or len(df) < step+2: continue
                 try:
-                    row = df.iloc[step]
+                    row  = df.iloc[step]
                     feat = pd.DataFrame([row[["RSI","MA20","MA50","momentum","volatility"]]])
-                    f = scaler.transform(feat)
-                    sc = (dt_model.predict(f)[0]*model_weights["dt"] +
-                          rf_model.predict(f)[0]*model_weights["rf"] +
-                          lr_model.predict(f)[0]*model_weights["lr"] +
-                          xgb_model.predict(f)[0]*model_weights["xgb"])
+                    f    = scaler.transform(feat)
+                    sc   = (dt_model.predict(f)[0]*model_weights["dt"] +
+                            rf_model.predict(f)[0]*model_weights["rf"] +
+                            lr_model.predict(f)[0]*model_weights["lr"] +
+                            xgb_model.predict(f)[0]*model_weights["xgb"])
                     if sc >= 0.6: pred=1
                     elif sc <= 0.4: pred=0
                     else: continue
@@ -882,7 +948,7 @@ def portfolio_backtest(mode: str = "simple"):
         cap_t+=h; peak=max(peak,cap_t); dd=min(dd,(cap_t-peak)/peak)
     arr=np.array(history)
     sharpe=round(np.mean(arr)/np.std(arr),2) if len(arr)>1 and np.std(arr)!=0 else 0
-    log_experiment("v2_davey",f"mode={mode}",{
+    log_experiment("v3_canslim",f"mode={mode}",{
         "return_pct": round((capital-initial)/initial*100,2),
         "sharpe_ratio": sharpe, "win_rate": win_rate, "max_drawdown": dd})
     return {"mode": mode,
@@ -891,6 +957,7 @@ def portfolio_backtest(mode: str = "simple"):
             "random_strategy":{"final_capital": round(rand,2),   "return_pct": round((rand-initial)/initial*100,2)},
             "sharpe_ratio": sharpe, "win_rate": round(win_rate,2),
             "max_drawdown": round(dd*100,2), "trades": total}
+
 
 @app.get("/paper-trades")
 def get_paper_trades():
@@ -908,7 +975,7 @@ def update_model_performance(symbol, last_preds, next_price):
         pred = last_preds[model]
         model_performance[model].append(1 if pred == actual else 0)
         model_performance[model] = model_performance[model][-50:]
-    scores = {m: sum(model_performance[m])/len(model_performance[m]) 
+    scores = {m: sum(model_performance[m])/len(model_performance[m])
               if model_performance[m] else 0.25 for m in model_performance}
     total = sum(scores.values())
     if total > 0:
